@@ -2,6 +2,12 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,visualstudiocode,vim,rust,c++
 
 projects/pico-fuzzer/pico/
+projects/sp1-fuzzer/sp1/
+**/arguzz-x-sp1.log.1
+**/arguzz-x-sp1.log
+*build.csv
+*findings.csv
+*normal.csv
 
 ### C++ ###
 # Prerequisites

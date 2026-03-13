@@ -5,11 +5,10 @@ from sp1_fuzzer.kinds import InjectionKind, InstrKind
 #
 
 SP1_AVAILABLE_COMMITS_OR_BRANCHES = [
-    "dev",
-    "429e95e00a51db1f3d7257e7db73c7fe0fd40801",
+    "latticevm"
 ]
-SP1_ZKVM_GIT_REPOSITORY = "https://github.com/DanielHoffmann91/sp1.git"
-RUST_TOOLCHAIN_VERSION = "stable"
+SP1_ZKVM_GIT_REPOSITORY = "https://github.com/Koukyosyumei/sp1/tree/latticevm"
+RUST_TOOLCHAIN_VERSION = "1.93.1"
 
 #
 # Rust Magic Values
