@@ -1,6 +1,8 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,vim,rust,c++
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,visualstudiocode,vim,rust,c++
 
+projects/pico-fuzzer/pico/
+
 ### C++ ###
 # Prerequisites
 *.d
