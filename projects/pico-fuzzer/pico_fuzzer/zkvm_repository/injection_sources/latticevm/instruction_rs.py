@@ -7,6 +7,119 @@ use crate::{
 };
 use tracing::debug;
 
+// <----------------------- START OF FAULT INJECTION ----------------------->
+
+use fuzzer_utils;
+
+pub fn modify_output_helper(a: u32) -> u32 {
+    if fuzzer_utils::is_injection_at_step("MODIFY_OUTPUT_VALUE") {
+        let new_a = fuzzer_utils::random_mod_of_u32(a);
+        fuzzer_utils::print_injection_info(
+            "MODIFY_OUTPUT_VALUE",
+            &format!("{:?} => {:?}", a, new_a),
+        );
+        new_a
+    } else {
+        a
+    }
+}
+
+pub fn random_opcode(old_opcode: Opcode) -> Opcode {
+    fuzzer_utils::random_from_choices(
+        vec![
+            Opcode::ADD,
+            Opcode::SUB,
+            Opcode::XOR,
+            Opcode::OR,
+            Opcode::AND,
+            Opcode::SLL,
+            Opcode::SRL,
+            Opcode::SRA,
+            Opcode::SLT,
+            Opcode::SLTU,
+            Opcode::LB,
+            Opcode::LH,
+            Opcode::LW,
+            Opcode::LBU,
+            Opcode::LHU,
+            Opcode::SB,
+            Opcode::SH,
+            Opcode::SW,
+            Opcode::BEQ,
+            Opcode::BNE,
+            Opcode::BLT,
+            Opcode::BGE,
+            Opcode::BLTU,
+            Opcode::BGEU,
+            Opcode::JAL,
+            Opcode::JALR,
+            Opcode::AUIPC,
+            Opcode::ECALL,
+            Opcode::EBREAK,
+            Opcode::MUL,
+            Opcode::MULH,
+            Opcode::MULHU,
+            Opcode::MULHSU,
+            Opcode::DIV,
+            Opcode::DIVU,
+            Opcode::REM,
+            Opcode::REMU,
+        ].into_iter().filter(|&x| x != old_opcode).collect()
+    )
+}
+
+pub fn random_register(old_value: u32) -> u32 {
+    fuzzer_utils::random_from_choices(
+        (0..=31).filter(|&x| x != old_value).collect()
+    )
+}
+
+pub fn random_mutate_instruction(old_instruction: &Instruction) -> Instruction {
+    let mut selected = fuzzer_utils::random_multiple_from_choices(
+        vec![0, 1, 2, 3]
+    );
+    selected.sort();
+
+    let mut new_instruction = old_instruction.clone();
+
+    for i in selected {
+        match i {
+            0 => {
+                new_instruction.opcode = random_opcode(new_instruction.opcode);
+            },
+            1 => {
+                new_instruction.op_a = random_register(new_instruction.op_a);
+            }
+            2 => {
+                if fuzzer_utils::random_bool() {
+                    new_instruction.imm_b = false;
+                    new_instruction.op_b = random_register(new_instruction.op_b);
+                } else {
+                    new_instruction.imm_b = true;
+                    new_instruction.op_b = fuzzer_utils::random_mod_of_u32(
+                        new_instruction.op_b
+                    );
+                }
+            }
+            3 => {
+                if fuzzer_utils::random_bool() && !new_instruction.imm_b {
+                    new_instruction.imm_c = false;
+                    new_instruction.op_c = random_register(new_instruction.op_c);
+                } else {
+                    new_instruction.imm_c = true;
+                    new_instruction.op_c = fuzzer_utils::random_mod_of_u32(
+                        new_instruction.op_c
+                    );
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+    new_instruction
+}
+
+// <------------------------ END OF FAULT INJECTION ------------------------>
+
 impl RiscvEmulator {
     /// Emulate the given instruction over the current state.
     #[allow(clippy::too_many_lines)]
@@ -24,6 +137,34 @@ impl RiscvEmulator {
         let mut memory_store_value: Option<u32> = None;
 
         self.mode.init_memory_access(&mut self.memory_accesses);
+
+        // <----------------------- START OF FAULT INJECTION ----------------------->
+
+        let mut instruction = instruction;
+        let _old_instruction = instruction.clone();
+        let new_instruction;
+
+        // update global state
+        let instruction_debug = format!("{:?}", instruction.opcode);
+        let assembly_debug = format!("{:?}", instruction);
+        fuzzer_utils::update_hints(self.state.pc, &instruction_debug, &assembly_debug);
+
+        if fuzzer_utils::is_injection_at_step("INSTR_WORD_MOD") {
+            new_instruction = random_mutate_instruction(instruction);
+            fuzzer_utils::print_injection_info(
+                "INSTR_WORD_MOD",
+                &format!("{:?} => {:?}", instruction, new_instruction),
+            );
+            instruction = &new_instruction;
+
+            fuzzer_utils::update_hints(
+                self.state.pc,
+                &format!("{:?}", instruction.opcode),
+                &format!("{:?}", instruction)
+            );
+        }
+
+        // <------------------------ END OF FAULT INJECTION ------------------------>
 
         match instruction.opcode {
             // Arithmetic instructions.
@@ -168,7 +309,7 @@ impl RiscvEmulator {
             }
             Opcode::LH => {
                 (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                if addr % 2 != 0 {
+                if !fuzzer_utils::is_injection() && addr % 2 != 0 {
                     return Err(EmulationError::InvalidMemoryAccess(Opcode::LH, addr));
                 }
                 let value = match (addr >> 1) % 2 {
@@ -182,7 +323,7 @@ impl RiscvEmulator {
             }
             Opcode::LW => {
                 (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                if addr % 4 != 0 {
+                if !fuzzer_utils::is_injection() && addr % 4 != 0 {
                     return Err(EmulationError::InvalidMemoryAccess(Opcode::LW, addr));
                 }
                 a = memory_read_value;
@@ -198,7 +339,7 @@ impl RiscvEmulator {
             }
             Opcode::LHU => {
                 (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                if addr % 2 != 0 {
+                if !fuzzer_utils::is_injection() && addr % 2 != 0 {
                     return Err(EmulationError::InvalidMemoryAccess(Opcode::LHU, addr));
                 }
                 let value = match (addr >> 1) % 2 {
@@ -226,7 +367,7 @@ impl RiscvEmulator {
             }
             Opcode::SH => {
                 (a, b, c, addr, memory_read_value) = self.store_rr(instruction);
-                if addr % 2 != 0 {
+                if !fuzzer_utils::is_injection() && addr % 2 != 0 {
                     return Err(EmulationError::InvalidMemoryAccess(Opcode::SH, addr));
                 }
                 let value = match (addr >> 1) % 2 {
@@ -239,7 +380,7 @@ impl RiscvEmulator {
             }
             Opcode::SW => {
                 (a, b, c, addr, _) = self.store_rr(instruction);
-                if addr % 4 != 0 {
+                if !fuzzer_utils::is_injection() && addr % 4 != 0 {
                     return Err(EmulationError::InvalidMemoryAccess(Opcode::SW, addr));
                 }
                 let value = a;
@@ -350,12 +491,16 @@ impl RiscvEmulator {
                             a = syscall_id;
                         }
 
+                        // <----------------------- START OF FAULT INJECTION ----------------------->
+
                         // If the syscall is `HALT` and the exit code is non-zero, return an error.
                         if syscall == SyscallCode::HALT && precompile_rt.exit_code != 0 {
                             return Err(EmulationError::HaltWithNonZeroExitCode(
                                 precompile_rt.exit_code,
                             ));
                         }
+
+                        // <------------------------ END OF FAULT INJECTION ------------------------>
 
                         (
                             precompile_rt.next_pc,
@@ -524,6 +669,41 @@ impl RiscvEmulator {
             &mut self.record.cpu_events,
             &mut self.record.memory_read_write_event_indices,
         );
+
+        // <----------------------- START OF FAULT INJECTION ----------------------->
+
+        fuzzer_utils::print_trace_info();
+
+        if fuzzer_utils::is_injection_at_step("EMULATE_RANDOM_INSTRUCTION") {
+
+            let new_instruction = random_mutate_instruction(instruction);
+            fuzzer_utils::print_injection_info(
+                "EMULATE_RANDOM_INSTRUCTION",
+                &format!("{:?} => {:?}", instruction, new_instruction),
+            );
+
+            // update has to be done inside of "if" such that it is not executed twice and
+            // does not manipulate if queried. Also the injection info is emitted before such
+            // that the correct step is used.
+            fuzzer_utils::inc_step();
+
+            if fuzzer_utils::random_bool() { // optional update
+                self.state.pc = next_pc;
+            }
+
+            if fuzzer_utils::random_bool() { // optional update
+                self.state.clk += 4;
+            }
+
+            let _ = self.emulate_instruction(&new_instruction);
+        } else {
+
+            // end of call update for a normal non-(emulate)-injection execution
+            fuzzer_utils::inc_step();
+
+        }
+
+        // <------------------------ END OF FAULT INJECTION ------------------------>
 
         // Update the program counter.
         self.state.pc = next_pc;
