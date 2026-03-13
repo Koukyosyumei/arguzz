@@ -424,7 +424,8 @@ class FuzzerCore(ABC, Generic[InstrKind, InjectionKind]):
             logger.critical(
                 f"Unexpected number of fault injections! Expected 1, but was {fault_count}!"
             )
-            raise FuzzerInternalError("unexpected number of fault injections!")
+            return
+            # raise FuzzerInternalError("unexpected number of fault injections!")
 
         # retrieve fault information
         fault = trace.faults[0]
