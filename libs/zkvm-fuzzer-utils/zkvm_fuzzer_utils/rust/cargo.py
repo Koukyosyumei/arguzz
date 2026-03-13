@@ -111,10 +111,10 @@ class CargoCmd:
 
     def get_command(self) -> list[str]:
         command = [self.__cargo]
-        if self.__sub_cli:
-            command.append(self.__sub_cli)
         if self.__toolchain:
             command.append(f"+{self.__toolchain}")
+        if self.__sub_cli:
+            command.append(self.__sub_cli)
         command.append(self.__action)
         if self.__release:
             command.append("--release")

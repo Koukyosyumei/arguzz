@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from enum import StrEnum
+from strenum import StrEnum
 from random import Random
 from typing import Type
 

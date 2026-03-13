@@ -10,6 +10,7 @@ from pico_fuzzer.settings import (
     RUST_GUEST_CORRECT_VALUE_AS_BYTES,
     TIMEOUT_PER_BUILD,
     TIMEOUT_PER_RUN,
+    RUST_TOOLCHAIN_VERSION,
 )
 from pico_fuzzer.zkvm_project import CircuitProjectGenerator
 from zkvm_fuzzer_utils.cmd import ExecStatus
@@ -127,6 +128,7 @@ class CircuitFuzzer(CircuitFuzzerBase[InstrKind, InjectionKind]):
     def build_project(self) -> list[ExecStatus]:
         built_app = (
             CargoCmd.build()
+            .with_toolchain(RUST_TOOLCHAIN_VERSION)
             .with_sub_cli("pico")
             .with_cd(self.project_dir / "app")
             .with_timeout(self.fuzzer_config.build_timeout)
@@ -134,6 +136,7 @@ class CircuitFuzzer(CircuitFuzzerBase[InstrKind, InjectionKind]):
         )
         built_prover = (
             CargoCmd.build()
+            .with_toolchain(RUST_TOOLCHAIN_VERSION)
             .with_cd(self.project_dir / "prover")
             .with_timeout(self.fuzzer_config.build_timeout)
             .in_release()
@@ -144,6 +147,7 @@ class CircuitFuzzer(CircuitFuzzerBase[InstrKind, InjectionKind]):
     def execute_project(self, arguments: list[str]):
         return (
             CargoCmd.run()
+            .with_toolchain(RUST_TOOLCHAIN_VERSION)
             .with_cd(self.project_dir / "prover")
             .with_args(arguments)
             .with_timeout(self.fuzzer_config.execution_timeout)

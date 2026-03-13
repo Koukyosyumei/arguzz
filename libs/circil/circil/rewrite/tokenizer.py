@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from enum import StrEnum
+from strenum import StrEnum
 
 from circil.ir.operator import Operator
 

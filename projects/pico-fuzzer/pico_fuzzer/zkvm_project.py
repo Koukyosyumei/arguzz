@@ -40,6 +40,8 @@ class CircuitProjectGenerator(AbstractCircuitProjectGenerator):
 name = "lib"
 version = "1.0.0"
 edition = "2024"
+
+[workspace]
 """,
         )
 
@@ -62,6 +64,8 @@ pub fn load_elf(path: &str) -> Vec<u8> {
 name = "pico-circuit"
 version = "1.0.0"
 edition = "2024"
+
+[workspace]
 
 [dependencies]
 pico-sdk = {{ path = "{self.zkvm_path}/sdk/sdk" }}
@@ -126,6 +130,8 @@ pub fn main() {
 name = "pico-prover"
 version = "1.0.0"
 edition = "2024"
+
+[workspace]
 
 [dependencies]
 pico-sdk = {{ path = "{self.zkvm_path}/sdk/sdk" }}
