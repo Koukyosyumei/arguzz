@@ -1522,6 +1522,7 @@ impl<F: StarkField> Machine<F> for BasicMachine<F> {
         let original_instr = instruction.clone();
         
         // 更新 Arguzz Hint 信息
+        /*
         fuzzer_utils::update_hints(pc, &format!("{:?}", instruction.opcode), &format!("{:?}", instruction));
 
         if fuzzer_utils::is_injection_at_step("INSTR_WORD_MOD") {
@@ -1530,6 +1531,7 @@ impl<F: StarkField> Machine<F> for BasicMachine<F> {
             instruction.opcode = fuzzer_utils::random_from_choices(vec![...]); 
             fuzzer_utils::print_injection_info("INSTR_WORD_MOD", &format!("{:?} => {:?}", original_instr, instruction));
         }
+        */
         // <--- END OF FAULT INJECTION --->
 
         // Execute

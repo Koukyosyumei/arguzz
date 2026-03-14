@@ -1,0 +1,341 @@
+[Valida 2026-03-14 10:00:26,422 ~ DEBUG]:    Compiling fuzzer_utils v1.0.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/fuzzer_utils)
+warning: unused import: `PrimeField32`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/memory_footprint/src/lib.rs:186:16
+    |
+186 | use p3_field::{PrimeField32, TwoAdicField};
+    |                ^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `valida-memory-footprint` (lib) generated 1 warning (run `cargo fix --lib -p valida-memory-footprint` to apply 1 suggestion)
+   Compiling valida-machine v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine)
+warning: unused imports: `Arc` and `Mutex`
+ --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/machine.rs:1:17
+  |
+1 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `InteractionMap`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/machine.rs:10:5
+   |
+10 |     InteractionMap, MachineProof, PublicTrace, ReplayAdviceProvider, WriteCallbackWithDefault,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/permutation/mod.rs:3:17
+  |
+3 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unused import: `PrimeField32`
+ --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/permutation/mod.rs:5:70
+  |
+5 | use p3_field::{AbstractExtensionField, AbstractField, Field, Powers, PrimeField32};
+  |                                                                      ^^^^^^^^^^^^
+
+warning: unused imports: `InteractionMap`, `InteractionMetadata`, and `InteractionVec`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/permutation/mod.rs:11:39
+   |
+11 |     ChipWithPersistence, Interaction, InteractionMap, InteractionMetadata, InteractionType,
+   |                                       ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+12 |     InteractionVec, Machine, PublicTrace, PublicValues, StarkConfig,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused import: `p3_field::Field`
+ --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/permutation/stark.rs:4:5
+  |
+4 | use p3_field::Field;
+  |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `PrimeField32`
+ --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/public.rs:4:32
+  |
+4 | use p3_field::{ExtensionField, PrimeField32, TwoAdicField};
+  |                                ^^^^^^^^^^^^
+
+warning: unused import: `AbstractExtensionField`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/symbolic/symbolic_builder.rs:10:16
+   |
+10 | use p3_field::{AbstractExtensionField, AbstractField};
+   |                ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `k`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/symbolic/symbolic_builder.rs:184:38
+    |
+184 |         SymbolicExpression::Constant(k) => SymbolicExpression::Constant(F::zero()),
+    |                                      ^ help: if this is intentional, prefix it with an underscore: `_k`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/machine.rs:118:29
+    |
+118 |     fn start(self, runtime: &mut Self::Runtime) -> RunningMachine<F, Self>;
+    |                             ^^^^^^^^^^^^^^^^^^     ^^^^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                             |
+    |                             the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+118 |     fn start(self, runtime: &mut Self::Runtime) -> RunningMachine<'_, F, Self>;
+    |                                                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/program.rs:215:17
+    |
+215 |     pub fn iter(&self) -> Iter<T> {
+    |                 ^^^^^     ^^^^^^^ the same lifetime is hidden here
+    |                 |
+    |                 the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+215 |     pub fn iter(&self) -> Iter<'_, T> {
+    |                                +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/machine/src/program.rs:218:21
+    |
+218 |     pub fn iter_mut(&mut self) -> IterMut<T> {
+    |                     ^^^^^^^^^     ^^^^^^^^^^ the same lifetime is hidden here
+    |                     |
+    |                     the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+218 |     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+    |                                           +++
+
+   Compiling valida-bus v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/bus)
+   Compiling valida-persistence v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/persistence)
+   Compiling valida-elf v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/elf)
+   Compiling valida-lookups v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/lookups)
+   Compiling valida-static-data v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/static_data)
+warning: unused import: `MachineWithMemBus`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/static_data/src/lib.rs:14:18
+   |
+14 | use valida_bus::{MachineWithMemBus, MachineWithPersistentMemBus};
+   |                  ^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `AbstractField`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/static_data/src/lib.rs:11:16
+   |
+11 | use p3_field::{AbstractField, PrimeField, PrimeField32};
+   |                ^^^^^^^^^^^^^
+
+warning: `valida-machine` (lib) generated 12 warnings (run `cargo fix --lib -p valida-machine` to apply 12 suggestions)
+   Compiling valida-bytes v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/bytes)
+   Compiling valida-program v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/program)
+   Compiling valida-range v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/range)
+warning: unused variable: `res`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/bytes/src/lib.rs:434:13
+    |
+434 |         let res = self.check_byte_op(*word.index_be(0), ByteOperation::Under0x3C);
+    |             ^^^ help: if this is intentional, prefix it with an underscore: `_res`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `valida-static-data` (lib) generated 2 warnings (run `cargo fix --lib -p valida-static-data` to apply 1 suggestion)
+   Compiling valida-memory v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/memory)
+warning: unused import: `MemoryBackendTrait`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/memory/src/lib.rs:37:57
+   |
+37 |     MachineWithFinalMemoryState, MemoryAccessTimestamp, MemoryBackendTrait, MemoryRecord,
+   |                                                         ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `valida-bytes` (lib) generated 1 warning (run `cargo fix --lib -p valida-bytes` to apply 1 suggestion)
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/memory/src/lib.rs:252:17
+    |
+252 |     pub fn iter(&self) -> Iter<R> {
+    |                 ^^^^^     ^^^^^^^ the same lifetime is hidden here
+    |                 |
+    |                 the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+252 |     pub fn iter(&self) -> Iter<'_, R> {
+    |                                +++
+
+   Compiling valida-cpu v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/cpu)
+warning: `valida-memory` (lib) generated 2 warnings (run `cargo fix --lib -p valida-memory` to apply 2 suggestions)
+warning: unused variable: `is_real`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/cpu/src/stark.rs:319:13
+    |
+319 |         let is_real = local.is_real;
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_is_real`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling valida-alu-u32 v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32)
+   Compiling valida-keccak v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/keccak)
+   Compiling valida-elliptic v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/elliptic)
+warning: `valida-cpu` (lib) generated 1 warning (run `cargo fix --lib -p valida-cpu` to apply 1 suggestion)
+warning: unnecessary parentheses around closure body
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/com/mod.rs:169:31
+    |
+169 |                 .map(|(b, c)| (((b as i32 - c as i32) * (b as i32 - c as i32)) as u32))
+    |                               ^                                                      ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+169 -                 .map(|(b, c)| (((b as i32 - c as i32) * (b as i32 - c as i32)) as u32))
+169 +                 .map(|(b, c)| ((b as i32 - c as i32) * (b as i32 - c as i32)) as u32 )
+    |
+
+warning: unused variable: `c`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/lt/mod.rs:42:35
+   |
+42 |             Operation::Lt32(a, b, c) => a.memory_footprint() + 2 * b.memory_footprint(),
+   |                                   ^ help: if this is intentional, prefix it with an underscore: `_c`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `c`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/lt/mod.rs:43:36
+   |
+43 |             Operation::Lte32(a, b, c) => a.memory_footprint() + 2 * b.memory_footprint(),
+   |                                    ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+warning: unused variable: `c`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/lt/mod.rs:44:36
+   |
+44 |             Operation::Slt32(a, b, c) => a.memory_footprint() + 2 * b.memory_footprint(),
+   |                                    ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+warning: unused variable: `c`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/lt/mod.rs:45:36
+   |
+45 |             Operation::Sle32(a, b, c) => a.memory_footprint() + 2 * b.memory_footprint(),
+   |                                    ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+warning: unused variable: `a`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/mul/mod.rs:254:30
+    |
+254 |             Operation::Mul32(a, b, c) => 3 * b.memory_footprint(),
+    |                              ^ help: if this is intentional, prefix it with an underscore: `_a`
+
+warning: unused variable: `c`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/mul/mod.rs:254:36
+    |
+254 |             Operation::Mul32(a, b, c) => 3 * b.memory_footprint(),
+    |                                    ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+warning: unused variable: `a`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/mul/mod.rs:255:32
+    |
+255 |             Operation::Mulhs32(a, b, c) => 3 * b.memory_footprint(),
+    |                                ^ help: if this is intentional, prefix it with an underscore: `_a`
+
+warning: unused variable: `c`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/mul/mod.rs:255:38
+    |
+255 |             Operation::Mulhs32(a, b, c) => 3 * b.memory_footprint(),
+    |                                      ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+warning: unused variable: `a`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/mul/mod.rs:256:32
+    |
+256 |             Operation::Mulhu32(a, b, c) => 3 * b.memory_footprint(),
+    |                                ^ help: if this is intentional, prefix it with an underscore: `_a`
+
+warning: unused variable: `c`
+   --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/mul/mod.rs:256:38
+    |
+256 |             Operation::Mulhu32(a, b, c) => 3 * b.memory_footprint(),
+    |                                      ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+warning: unused variable: `a`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/shift/mod.rs:47:30
+   |
+47 |             Operation::Shl32(a, b, c) => 3 * b.memory_footprint(),
+   |                              ^ help: if this is intentional, prefix it with an underscore: `_a`
+
+warning: unused variable: `c`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/shift/mod.rs:47:36
+   |
+47 |             Operation::Shl32(a, b, c) => 3 * b.memory_footprint(),
+   |                                    ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+warning: unused variable: `a`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/shift/mod.rs:48:30
+   |
+48 |             Operation::Shr32(a, b, c) => 3 * b.memory_footprint(),
+   |                              ^ help: if this is intentional, prefix it with an underscore: `_a`
+
+warning: unused variable: `c`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/shift/mod.rs:48:36
+   |
+48 |             Operation::Shr32(a, b, c) => 3 * b.memory_footprint(),
+   |                                    ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+warning: unused variable: `a`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/shift/mod.rs:49:30
+   |
+49 |             Operation::Sra32(a, b, c) => 3 * b.memory_footprint(),
+   |                              ^ help: if this is intentional, prefix it with an underscore: `_a`
+
+warning: unused variable: `c`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/shift/mod.rs:49:36
+   |
+49 |             Operation::Sra32(a, b, c) => 3 * b.memory_footprint(),
+   |                                    ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+warning: unused variable: `a`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/sub/mod.rs:42:30
+   |
+42 |             Operation::Sub32(a, b, c) => 3 * b.memory_footprint(),
+   |                              ^ help: if this is intentional, prefix it with an underscore: `_a`
+
+warning: unused variable: `c`
+  --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/alu_u32/src/sub/mod.rs:42:36
+   |
+42 |             Operation::Sub32(a, b, c) => 3 * b.memory_footprint(),
+   |                                    ^ help: if this is intentional, prefix it with an underscore: `_c`
+
+   Compiling valida-output v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/output)
+   Compiling valida-basic-api v0.1.0 (/home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/basic-api)
+warning: `valida-alu-u32` (lib) generated 19 warnings (run `cargo fix --lib -p valida-alu-u32` to apply 19 suggestions)
+error[E0554]: `#![feature]` may not be used on the stable release channel
+ --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/basic-api/src/lib.rs:2:1
+  |
+2 | #![feature(trait_upcasting)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: remove the attribute
+  |
+  = help: the feature `trait_upcasting` has been stable since `1.86.0` and no longer requires an attribute to enable
+
+warning: the feature `trait_upcasting` has been stable since 1.86.0 and no longer requires an attribute to enable
+ --> /home/koukyosyumei/Dev/arguzz/projects/valida-fuzzer/valida-vm/basic-api/src/lib.rs:2:12
+  |
+2 | #![feature(trait_upcasting)]
+  |            ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(stable_features)]` on by default
+
+For more information about this error, try `rustc --explain E0554`.
+warning: `valida-basic-api` (lib) generated 1 warning
+error: could not compile `valida-basic-api` (lib) due to 1 previous error; 1 warning emitted
+
+[Valida 2026-03-14 10:00:26,423 ~ DEBUG]: =========== END STDERR ===========
+[Valida 2026-03-14 10:00:26,423 ~ WARNING]: Fuzzer stopped because of an internal error!
+[Valida 2026-03-14 10:00:26,423 ~ CRITICAL]: unable to build zkvm host build!
+Traceback (most recent call last):
+  File "/home/koukyosyumei/Dev/arguzz/libs/zkvm-fuzzer-utils/zkvm_fuzzer_utils/fuzzer.py", line 212, in loop
+    self.run()
+  File "/home/koukyosyumei/Dev/arguzz/libs/zkvm-fuzzer-utils/zkvm_fuzzer_utils/fuzzer.py", line 258, in run
+    raise FuzzerInternalError("unable to build zkvm host build!")
+zkvm_fuzzer_utils.fuzzer.FuzzerInternalError: unable to build zkvm host build!
+[Valida 2026-03-14 10:00:26,423 ~ INFO]: === End Valida Fuzzing Campaign ===

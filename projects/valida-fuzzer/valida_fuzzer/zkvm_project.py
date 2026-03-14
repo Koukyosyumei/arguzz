@@ -85,7 +85,7 @@ use valida_basic_api::{BasicMachine, BasicMachineMetrics};
 use valida_cpu::MachineWithRegisters;
 use valida_machine::{
     get_fixed_advice_provider, AdviceProviderWithDefault, Machine, ProgramROM,
-    WriteCallbackWithDefault,
+    WriteCallbackWithDefault, SegmentMachine
 };
 use valida_program::MachineWithProgramROM;
 

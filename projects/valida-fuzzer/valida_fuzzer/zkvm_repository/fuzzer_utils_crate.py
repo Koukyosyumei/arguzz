@@ -168,15 +168,11 @@ macro_rules! fuzzer_assert {
     ($cond:expr $(,)?) => {{
         if $crate::is_assertions() {
             assert!($cond);
-        } else if !$cond {
-            println!("Warning: fuzzer_assert! failed: {}", stringify!($cond));
         }
     }};
     ($cond:expr, $($arg:tt)+) => {{
         if $crate::is_assertions() {
             assert!($cond, $($arg)+);
-        } else if !$cond {
-            println!("Warning: fuzzer_assert! failed: {}", format_args!($($arg)+));
         }
     }};
 }
@@ -187,28 +183,11 @@ macro_rules! fuzzer_assert_eq {
     ($left:expr, $right:expr $(,)?) => {{
         if $crate::is_assertions() {
             assert_eq!($left, $right);
-        } else if $left != $right {
-            println!(
-                "Warning: fuzzer_assert_eq! failed: `{} != {}` (left: `{:?}`, right: `{:?}`)",
-                stringify!($left),
-                stringify!($right),
-                &$left,
-                &$right,
-            );
         }
     }};
     ($left:expr, $right:expr, $($arg:tt)+) => {{
         if $crate::is_assertions() {
             assert_eq!($left, $right, $($arg)+);
-        } else if $left != $right {
-            println!(
-                "Warning: fuzzer_assert_eq! failed: `{} != {}` (left: `{:?}`, right: `{:?}`): {}",
-                stringify!($left),
-                stringify!($right),
-                &$left,
-                &$right,
-                format_args!($($arg)+),
-            );
         }
     }};
 }
