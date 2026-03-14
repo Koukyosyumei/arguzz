@@ -38,6 +38,20 @@ def valida_fault_injection(valida_install_path: Path, commit_or_branch: str):
         valida_basic_api_src_machine_basic_rs(commit_or_branch),
     )
 
+    """
+    # 3b. Add rand to basic-api so the injected fault-injection code compiles.
+    # (fuzzer_utils is added to all core crates uniformly in step 5 below.)
+    replace_in_file(
+        valida_install_path / "basic-api" / "Cargo.toml",
+        [
+            (
+                r"\[dependencies\]",
+                "[dependencies]\nrand = { version = \"0.8\", features = [\"std_rng\"] }",
+            )
+        ],
+    )
+    """
+
     # 4. Handle Memory/Register OOB (Out-Of-Bounds) Fixes
     # Valida uses a memory-based addressing system. OOB protection should be added to 
     # the memory backend if necessary.

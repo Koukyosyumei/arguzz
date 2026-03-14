@@ -7,9 +7,14 @@ projects/valida-fuzzer/valida-vm
 
 **/arguzz-x-sp1.log.1
 **/arguzz-x-sp1.log
+**/arguzz-x-valida.log
 *build.csv
 *findings.csv
 *normal.csv
+*injection.csv
+*pipeline.csv
+*run.csv
+*summary.csv
 
 ### C++ ###
 # Prerequisites

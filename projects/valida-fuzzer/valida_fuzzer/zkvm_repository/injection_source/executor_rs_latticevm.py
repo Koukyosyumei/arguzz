@@ -5,8 +5,7 @@
 
 
 def executor_rs() -> str:
-    return """#![feature(trait_upcasting)]
-use core::marker::PhantomData;
+    return """use core::marker::PhantomData;
 
 use std::fs::File;
 use std::io::Write;
@@ -97,6 +96,252 @@ use std::collections::{HashMap, HashSet};
 use ark_std::{end_timer, start_timer};
 
 use valida_memory_footprint::MemoryFootprint;
+
+// <----------------------- START OF FAULT INJECTION ----------------------->
+
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+use fuzzer_utils;
+
+/// Context for managing fault injections in the Valida machine executor
+#[derive(Debug)]
+pub struct ValidaFaultInjectionContext {
+    pub trace_info_enabled: bool,
+    pub injection_enabled: bool,
+    pub instruction_override: bool,
+    pub injection_step: u64,
+    pub injection_type: String,
+    pub current_step: u64,
+    rng: StdRng,
+    /// Caches modified operands (Operands<i32>) keyed by PC
+    injection_history: HashMap<u32, Operands<i32>>,
+    pc_hint: u32,
+}
+
+impl ValidaFaultInjectionContext {
+    pub fn new(
+        trace_info_enabled: bool,
+        injection_enabled: bool,
+        instruction_override: bool,
+        injection_step: u64,
+        injection_type: String,
+        injection_seed: u64,
+    ) -> Self {
+        Self {
+            trace_info_enabled,
+            injection_enabled,
+            instruction_override,
+            injection_step,
+            injection_type,
+            current_step: 0,
+            rng: StdRng::seed_from_u64(injection_seed),
+            injection_history: HashMap::new(),
+            pc_hint: 0,
+        }
+    }
+
+    /// Advances the step counter and updates the PC hint
+    pub fn step(&mut self, next_pc: u32) {
+        self.current_step += 1;
+        self.pc_hint = next_pc;
+        if self.current_step > 1_000_000 {
+            panic!("Endless loop detection step bound triggered! Bound: 1000000 steps");
+        }
+    }
+
+    pub fn get_pc_hint(&self) -> u32 {
+        self.pc_hint
+    }
+
+    pub fn is_injection_enabled(&self) -> bool {
+        self.injection_enabled
+    }
+
+    /// Returns true if an injection should fire for the given type and PC
+    pub fn is_injection(&self, injection_type: &str, pc: &u32) -> bool {
+        self.injection_enabled
+            && self.injection_type == injection_type
+            && ((self.instruction_override && self.injection_history.contains_key(pc))
+                || self.current_step == self.injection_step)
+    }
+
+    /// Prints trace information in a parsable format
+    pub fn print_trace_info(&self, pc: &u32, instruction: &str, assembly: &str, clk: u32) {
+        if self.trace_info_enabled {
+            println!(
+                "<trace>{{\\
+                    \\"step\\":{}, \\
+                    \\"pc\\":{}, \\
+                    \\"instruction\\":\\"{}\\"  , \\
+                    \\"assembly\\":\\"{}\\"  , \\
+                    \\"clk\\":\\"{}\\"\\
+                }}</trace>",
+                self.current_step, pc, instruction, assembly, clk,
+            );
+        }
+    }
+
+    /// Prints injection info in a parsable format
+    pub fn print_injection_info(
+        &self,
+        pc: &u32,
+        opcode: u32,
+        injection_type: &str,
+        info: &String,
+    ) {
+        if self.trace_info_enabled {
+            println!(
+                "<fault>{{\\
+                    \\"step\\":{}, \\
+                    \\"pc\\":{}, \\
+                    \\"opcode\\":{}, \\
+                    \\"kind\\":\\"{}\\",\\
+                    \\"info\\":\\"{}\\"\\
+                }}</fault>",
+                self.current_step, pc, opcode, injection_type, info,
+            );
+        }
+    }
+
+    /// Randomly modifies a single i32 operand value
+    pub fn random_mod_of_i32(&mut self, value: i32) -> i32 {
+        let mut new_value = value;
+        while new_value == value {
+            let selector: u32 = self.rng.gen_range(0..=7);
+            new_value = match selector {
+                0 => 0,
+                1 => 1,
+                2 => i32::MAX,
+                3 => i32::MIN,
+                4 => {
+                    let bits = self.rng.gen_range(1..=30u32);
+                    value ^ (1_i32 << bits)
+                }
+                5 => value.saturating_add(1),
+                6 => value.saturating_sub(1),
+                7 => self.rng.gen::<i32>(),
+                _ => unreachable!(),
+            };
+        }
+        new_value
+    }
+
+    /// Randomly modifies a pair of i32 operand values
+    pub fn random_mod_of_i32_pair(&mut self, a: i32, b: i32) -> (i32, i32) {
+        let selector: u32 = self.rng.gen_range(0..=5);
+        match selector {
+            0 => (self.random_mod_of_i32(a), b),
+            1 => (a, self.random_mod_of_i32(b)),
+            2 => (self.random_mod_of_i32(a), self.random_mod_of_i32(b)),
+            3 => (b, a),
+            4 => (a, a),
+            5 => (b, b),
+            _ => unreachable!(),
+        }
+    }
+
+    /// Randomly modifies any subset of the instruction operand fields.
+    /// `Operands<F>(pub [F; OPERAND_ELEMENTS])` — inner array accessed via `.0`.
+    pub fn random_modify_operands(&mut self, ops: &Operands<i32>) -> Operands<i32> {
+        let mut arr = ops.0;
+        let mask = self.rng.gen_range(1u8..=31u8); // ensure at least one element changes
+        for (i, bit) in (0..arr.len()).zip([1u8, 2, 4, 8, 16]) {
+            if mask & bit != 0 {
+                arr[i] = self.random_mod_of_i32(arr[i]);
+            }
+        }
+        Operands(arr)
+    }
+
+    /// Returns a random PC offset by 1–1000 Valida instructions (BYTES_PER_INSTR aligned)
+    pub fn random_pc(&mut self, pc: u32) -> u32 {
+        let steps: u32 = match self.rng.gen_range(0..=2) {
+            0 => 1,
+            1 => self.rng.gen_range(2..=10),
+            2 => self.rng.gen_range(11..=1000),
+            _ => unreachable!(),
+        };
+        if self.rng.gen::<bool>() {
+            pc.saturating_add(steps * BYTES_PER_INSTR as u32)
+        } else {
+            pc.saturating_sub(steps * BYTES_PER_INSTR as u32)
+        }
+    }
+
+    /// Returns a cached or newly generated `Operands<i32>` for this PC.
+    /// On the first injection at a PC, creates and caches the modification.
+    /// On subsequent visits (instruction_override=true), returns the cached version.
+    pub fn get_or_create_operands(&mut self, ops: &Operands<i32>, pc: u32) -> Operands<i32> {
+        if self.instruction_override {
+            if let Some(cached) = self.injection_history.get(&pc) {
+                return *cached;
+            }
+        }
+        let new_ops = self.random_modify_operands(ops);
+        self.injection_history.insert(pc, new_ops);
+        new_ops
+    }
+}
+
+impl Default for ValidaFaultInjectionContext {
+    fn default() -> Self {
+        Self::new(
+            fuzzer_utils::is_trace_logging(),
+            fuzzer_utils::is_injection(),
+            fuzzer_utils::is_instruction_override(),
+            fuzzer_utils::get_injection_step(),
+            fuzzer_utils::get_injection_kind(),
+            fuzzer_utils::get_seed(),
+        )
+    }
+}
+
+/// Maps a Valida opcode (u32) to its mnemonic string matching InstrKind values.
+fn valida_opcode_mnemonic<F: StarkField>(opcode: u32) -> &'static str {
+    if opcode == <Load32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "load32"; }
+    if opcode == <LoadU8Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "loadu8"; }
+    if opcode == <LoadS8Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "loads8"; }
+    if opcode == <Store32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "store32"; }
+    if opcode == <StoreU8Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "storeu8"; }
+    if opcode == <JalInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "jal"; }
+    if opcode == <JalvInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "jalv"; }
+    if opcode == <BeqInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "beq"; }
+    if opcode == <BneInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "bne"; }
+    if opcode == <Imm32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "imm32"; }
+    if opcode == <StopInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "stop"; }
+    if opcode == <FailInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "fail"; }
+    if opcode == <LoadFpInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "loadfp"; }
+    if opcode == <MemcpyInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "memcpy"; }
+    if opcode == <Add32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "add32"; }
+    if opcode == <Sub32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "sub32"; }
+    if opcode == <Mul32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "mul32"; }
+    if opcode == <Mulhs32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "mulhs32"; }
+    if opcode == <Mulhu32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "mulhu32"; }
+    if opcode == <Div32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "div32"; }
+    if opcode == <SDiv32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "sdiv32"; }
+    if opcode == <Shl32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "shl32"; }
+    if opcode == <Shr32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "shr32"; }
+    if opcode == <Sra32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "sra32"; }
+    if opcode == <Lt32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "lt32"; }
+    if opcode == <Lte32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "lte32"; }
+    if opcode == <Slt32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "slt32"; }
+    if opcode == <Sle32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "sle32"; }
+    if opcode == <And32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "and32"; }
+    if opcode == <Or32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "or32"; }
+    if opcode == <Xor32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "xor32"; }
+    if opcode == <Ne32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "ne32"; }
+    if opcode == <Eq32Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "eq32"; }
+    if opcode == <ReadAdviceInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "read"; }
+    if opcode == <WriteInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "write"; }
+    if opcode == <KeccakFInstruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "keccakf"; }
+    if opcode == <CombSecp256k1Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "comb_secp256k1"; }
+    if opcode == <MulsSecp256k1Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "muls_secp256k1"; }
+    if opcode == <SinvSecp256k1Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "sinv_secp256k1"; }
+    if opcode == <SmulSecp256k1Instruction as Instruction<BasicMachine<F>, F>>::OPCODE { return "smul_secp256k1"; }
+    "unknown"
+}
+
+// <-----------------------  END OF FAULT INJECTION  ----------------------->
 
 pub type BasicRunningMachine<'a, F> = RunningMachine<'a, F, BasicMachine<F>>;
 
@@ -247,6 +492,10 @@ pub struct BasicMachine<F: StarkField> {
     max_segment_size: usize,
 
     pub state_history: Vec<ValidaSimpleState>,
+
+    // <----------------------- START OF FAULT INJECTION ----------------------->
+    pub fault_injection_context: ValidaFaultInjectionContext,
+    // <------------------------ END OF FAULT INJECTION ------------------------>
 
     _phantom_sc: PhantomData<fn() -> F>,
 }
@@ -1514,146 +1763,276 @@ impl<F: StarkField> Machine<F> for BasicMachine<F> {
         // Fetch
         let pc = state.machine.cpu().pc;
         let instruction = state.machine.program_rom().get_instruction(pc);
-        let opcode = instruction.opcode;
-        let ops = instruction.operands;
+        let original_opcode = instruction.opcode;
+        let original_ops = instruction.operands;
 
-        // <--- START OF FAULT INJECTION --->
-        use fuzzer_utils;
-        let original_instr = instruction.clone();
-        
-        // 更新 Arguzz Hint 信息
-        /*
-        fuzzer_utils::update_hints(pc, &format!("{:?}", instruction.opcode), &format!("{:?}", instruction));
+        // <----------------------- START OF FAULT INJECTION ----------------------->
 
-        if fuzzer_utils::is_injection_at_step("INSTR_WORD_MOD") {
-            // 隨機修改 opcode 或 operands
-            // 例如：隨機切換到另一個 opcode
-            instruction.opcode = fuzzer_utils::random_from_choices(vec![...]); 
-            fuzzer_utils::print_injection_info("INSTR_WORD_MOD", &format!("{:?} => {:?}", original_instr, instruction));
-        }
-        */
-        // <--- END OF FAULT INJECTION --->
+        // Print trace info for the current step before any injection
+        // Operands<F>(pub [F; OPERAND_ELEMENTS]): inner array is ops.0, elements via ops.0[i]
+        let trace_mnemonic = valida_opcode_mnemonic::<F>(original_opcode);
+        let trace_assembly = {
+            let o = &original_ops.0;
+            format!("{} {},{},{},{},{}", trace_mnemonic, o[0], o[1], o[2], o[3], o[4])
+        };
+        state.machine.fault_injection_context.print_trace_info(
+            &pc,
+            trace_mnemonic,
+            &trace_assembly,
+            state.machine.cpu().clock,
+        );
 
-        // Execute
+        // Determine the effective operands to execute with, applying pre-execute injections.
+        // Only one injection type fires per step (injection_type is a single value).
+        let exec_ops = if state.machine.fault_injection_context.is_injection("INSTR_WORD_MOD", &pc) {
+            // Full instruction operand mutation (opcode is kept; operands are randomised)
+            let new_ops = state.machine.fault_injection_context.get_or_create_operands(
+                &original_ops,
+                pc,
+            );
+            let o = &original_ops.0;
+            let n = &new_ops.0;
+            state.machine.fault_injection_context.print_injection_info(
+                &pc, original_opcode, "INSTR_WORD_MOD",
+                &format!(
+                    "({},{},{},{},{}) => ({},{},{},{},{})",
+                    o[0], o[1], o[2], o[3], o[4],
+                    n[0], n[1], n[2], n[3], n[4],
+                ),
+            );
+            new_ops
+
+        } else if state.machine.fault_injection_context.is_injection("ALU_RESULT_LOC_MOD", &pc) {
+            // Modify the output operand (op_a / ops.0[0]) — changes where the result is written
+            let new_a = state.machine.fault_injection_context.random_mod_of_i32(original_ops.0[0]);
+            state.machine.fault_injection_context.print_injection_info(
+                &pc, original_opcode, "ALU_RESULT_LOC_MOD",
+                &format!("op_a: {} => {}", original_ops.0[0], new_a),
+            );
+            let mut arr = original_ops.0;
+            arr[0] = new_a;
+            Operands(arr)
+
+        } else if state.machine.fault_injection_context.is_injection("ALU_PARSED_OPERAND_MOD", &pc) {
+            // Modify input operands (op_b / ops.0[1] and op_c / ops.0[2]) after parsing
+            let (new_b, new_c) = state.machine.fault_injection_context.random_mod_of_i32_pair(
+                original_ops.0[1], original_ops.0[2],
+            );
+            state.machine.fault_injection_context.print_injection_info(
+                &pc, original_opcode, "ALU_PARSED_OPERAND_MOD",
+                &format!("(op_b,op_c): ({},{}) => ({},{})",
+                    original_ops.0[1], original_ops.0[2], new_b, new_c),
+            );
+            let mut arr = original_ops.0;
+            arr[1] = new_b;
+            arr[2] = new_c;
+            Operands(arr)
+
+        } else if state.machine.fault_injection_context.is_injection("ALU_LOAD_OPERAND_MOD", &pc) {
+            // Modify operands at the operand-loading stage (equivalent to parsed operand mod for Valida)
+            let (new_b, new_c) = state.machine.fault_injection_context.random_mod_of_i32_pair(
+                original_ops.0[1], original_ops.0[2],
+            );
+            state.machine.fault_injection_context.print_injection_info(
+                &pc, original_opcode, "ALU_LOAD_OPERAND_MOD",
+                &format!("(op_b,op_c): ({},{}) => ({},{})",
+                    original_ops.0[1], original_ops.0[2], new_b, new_c),
+            );
+            let mut arr = original_ops.0;
+            arr[1] = new_b;
+            arr[2] = new_c;
+            Operands(arr)
+
+        } else {
+            original_ops
+        };
+
+        let opcode = original_opcode;
+
+        // <------------------------ END OF FAULT INJECTION ------------------------>
+
+        // Execute using (potentially injected) operands
         match opcode {
             <Load32Instruction as Instruction<Self, F>>::OPCODE => {
-                Load32Instruction::execute(state, ops)
+                Load32Instruction::execute(state, exec_ops)
             }
             <LoadU8Instruction as Instruction<Self, F>>::OPCODE => {
-                LoadU8Instruction::execute(state, ops)
+                LoadU8Instruction::execute(state, exec_ops)
             }
             <LoadS8Instruction as Instruction<Self, F>>::OPCODE => {
-                LoadS8Instruction::execute(state, ops)
+                LoadS8Instruction::execute(state, exec_ops)
             }
             <Store32Instruction as Instruction<Self, F>>::OPCODE => {
-                Store32Instruction::execute(state, ops)
+                Store32Instruction::execute(state, exec_ops)
             }
             <StoreU8Instruction as Instruction<Self, F>>::OPCODE => {
-                StoreU8Instruction::execute(state, ops)
+                StoreU8Instruction::execute(state, exec_ops)
             }
-            <JalInstruction as Instruction<Self, F>>::OPCODE => JalInstruction::execute(state, ops),
+            <JalInstruction as Instruction<Self, F>>::OPCODE => JalInstruction::execute(state, exec_ops),
             <JalvInstruction as Instruction<Self, F>>::OPCODE => {
-                JalvInstruction::execute(state, ops)
+                JalvInstruction::execute(state, exec_ops)
             }
-            <BeqInstruction as Instruction<Self, F>>::OPCODE => BeqInstruction::execute(state, ops),
-            <BneInstruction as Instruction<Self, F>>::OPCODE => BneInstruction::execute(state, ops),
+            <BeqInstruction as Instruction<Self, F>>::OPCODE => BeqInstruction::execute(state, exec_ops),
+            <BneInstruction as Instruction<Self, F>>::OPCODE => BneInstruction::execute(state, exec_ops),
             <Imm32Instruction as Instruction<Self, F>>::OPCODE => {
-                Imm32Instruction::execute(state, ops)
+                Imm32Instruction::execute(state, exec_ops)
             }
             <StopInstruction as Instruction<Self, F>>::OPCODE => {
-                StopInstruction::execute(state, ops)
+                StopInstruction::execute(state, exec_ops)
             }
             <FailInstruction as Instruction<Self, F>>::OPCODE => {
-                FailInstruction::execute(state, ops)
+                FailInstruction::execute(state, exec_ops)
             }
             <LoadFpInstruction as Instruction<Self, F>>::OPCODE => {
-                LoadFpInstruction::execute(state, ops)
+                LoadFpInstruction::execute(state, exec_ops)
             }
             <Add32Instruction as Instruction<Self, F>>::OPCODE => {
-                Add32Instruction::execute(state, ops)
+                Add32Instruction::execute(state, exec_ops)
             }
             <Sub32Instruction as Instruction<Self, F>>::OPCODE => {
-                Sub32Instruction::execute(state, ops)
+                Sub32Instruction::execute(state, exec_ops)
             }
             <Mul32Instruction as Instruction<Self, F>>::OPCODE => {
-                Mul32Instruction::execute(state, ops)
+                Mul32Instruction::execute(state, exec_ops)
             }
             <Mulhs32Instruction as Instruction<Self, F>>::OPCODE => {
-                Mulhs32Instruction::execute(state, ops)
+                Mulhs32Instruction::execute(state, exec_ops)
             }
             <Mulhu32Instruction as Instruction<Self, F>>::OPCODE => {
-                Mulhu32Instruction::execute(state, ops)
+                Mulhu32Instruction::execute(state, exec_ops)
             }
             <Div32Instruction as Instruction<Self, F>>::OPCODE => {
-                Div32Instruction::execute(state, ops)
+                Div32Instruction::execute(state, exec_ops)
             }
             <SDiv32Instruction as Instruction<Self, F>>::OPCODE => {
-                SDiv32Instruction::execute(state, ops)
+                SDiv32Instruction::execute(state, exec_ops)
             }
             <Shl32Instruction as Instruction<Self, F>>::OPCODE => {
-                Shl32Instruction::execute(state, ops)
+                Shl32Instruction::execute(state, exec_ops)
             }
             <Shr32Instruction as Instruction<Self, F>>::OPCODE => {
-                Shr32Instruction::execute(state, ops)
+                Shr32Instruction::execute(state, exec_ops)
             }
             <Sra32Instruction as Instruction<Self, F>>::OPCODE => {
-                Sra32Instruction::execute(state, ops)
+                Sra32Instruction::execute(state, exec_ops)
             }
             <Lt32Instruction as Instruction<Self, F>>::OPCODE => {
-                Lt32Instruction::execute(state, ops)
+                Lt32Instruction::execute(state, exec_ops)
             }
             <Lte32Instruction as Instruction<Self, F>>::OPCODE => {
-                Lte32Instruction::execute(state, ops)
+                Lte32Instruction::execute(state, exec_ops)
             }
             <Slt32Instruction as Instruction<Self, F>>::OPCODE => {
-                Slt32Instruction::execute(state, ops)
+                Slt32Instruction::execute(state, exec_ops)
             }
             <Sle32Instruction as Instruction<Self, F>>::OPCODE => {
-                Sle32Instruction::execute(state, ops)
+                Sle32Instruction::execute(state, exec_ops)
             }
             <And32Instruction as Instruction<Self, F>>::OPCODE => {
-                And32Instruction::execute(state, ops)
+                And32Instruction::execute(state, exec_ops)
             }
             <Or32Instruction as Instruction<Self, F>>::OPCODE => {
-                Or32Instruction::execute(state, ops)
+                Or32Instruction::execute(state, exec_ops)
             }
             <Xor32Instruction as Instruction<Self, F>>::OPCODE => {
-                Xor32Instruction::execute(state, ops)
+                Xor32Instruction::execute(state, exec_ops)
             }
             <Ne32Instruction as Instruction<Self, F>>::OPCODE => {
-                Ne32Instruction::execute(state, ops)
+                Ne32Instruction::execute(state, exec_ops)
             }
             <Eq32Instruction as Instruction<Self, F>>::OPCODE => {
-                Eq32Instruction::execute(state, ops)
+                Eq32Instruction::execute(state, exec_ops)
             }
             <ReadAdviceInstruction as Instruction<Self, F>>::OPCODE => {
-                ReadAdviceInstruction::execute(state, ops)
+                ReadAdviceInstruction::execute(state, exec_ops)
             }
             <WriteInstruction as Instruction<Self, F>>::OPCODE => {
-                WriteInstruction::execute(state, ops)
+                WriteInstruction::execute(state, exec_ops)
             }
             <KeccakFInstruction as Instruction<Self, F>>::OPCODE => {
-                KeccakFInstruction::execute(state, ops)
+                KeccakFInstruction::execute(state, exec_ops)
             }
             <MemcpyInstruction as Instruction<Self, F>>::OPCODE => {
-                MemcpyInstruction::execute(state, ops)
+                MemcpyInstruction::execute(state, exec_ops)
             }
             <CombSecp256k1Instruction as Instruction<Self, F>>::OPCODE => {
-                CombSecp256k1Instruction::execute(state, ops)
+                CombSecp256k1Instruction::execute(state, exec_ops)
             }
             <MulsSecp256k1Instruction as Instruction<Self, F>>::OPCODE => {
-                MulsSecp256k1Instruction::execute(state, ops)
+                MulsSecp256k1Instruction::execute(state, exec_ops)
             }
             <SinvSecp256k1Instruction as Instruction<Self, F>>::OPCODE => {
-                SinvSecp256k1Instruction::execute(state, ops)
+                SinvSecp256k1Instruction::execute(state, exec_ops)
             }
             <SmulSecp256k1Instruction as Instruction<Self, F>>::OPCODE => {
-                SmulSecp256k1Instruction::execute(state, ops)
+                SmulSecp256k1Instruction::execute(state, exec_ops)
             }
-            _ => panic!("Unrecognized opcode: {}, pc = {}", opcode, pc),
+            _ => {
+                // <----------------------- START OF FAULT INJECTION ----------------------->
+                if state.machine.fault_injection_context.is_injection_enabled() {
+                    println!("WARNING: HOTFIX unrecognized opcode {} at pc={} due to injection — treating as NOP", opcode, pc);
+                    // Treat as no-op: advance PC manually
+                    state.machine.set_pc(pc + BYTES_PER_INSTR as u32);
+                } else {
+                    panic!("Unrecognized opcode: {}, pc = {}", opcode, pc);
+                }
+                // <------------------------ END OF FAULT INJECTION ------------------------>
+            }
         };
+
         let log = state.machine.log_enabled();
+
+        // <----------------------- START OF FAULT INJECTION ----------------------->
+
+        // POST_EXEC_PRE_COMMIT_PC_MOD: modify the CPU's PC before read_word (commit)
+        if state.machine.fault_injection_context.is_injection("POST_EXEC_PRE_COMMIT_PC_MOD", &pc) {
+            let current_pc = state.machine.cpu().pc;
+            let new_pc = state.machine.fault_injection_context.random_pc(current_pc);
+            state.machine.fault_injection_context.print_injection_info(
+                &pc, opcode, "POST_EXEC_PRE_COMMIT_PC_MOD",
+                &format!("pc {} => {}", current_pc, new_pc),
+            );
+            state.machine.set_pc(new_pc);
+        }
+
+        // <------------------------ END OF FAULT INJECTION ------------------------>
+
         state.machine.read_word(pc, log);
+
+        // <----------------------- START OF FAULT INJECTION ----------------------->
+
+        // POST_EXEC_POST_COMMIT_PC_MOD: modify the CPU's PC after read_word (commit)
+        if state.machine.fault_injection_context.is_injection("POST_EXEC_POST_COMMIT_PC_MOD", &pc) {
+            let current_pc = state.machine.cpu().pc;
+            let new_pc = state.machine.fault_injection_context.random_pc(current_pc);
+            state.machine.fault_injection_context.print_injection_info(
+                &pc, opcode, "POST_EXEC_POST_COMMIT_PC_MOD",
+                &format!("pc {} => {}", current_pc, new_pc),
+            );
+            state.machine.set_pc(new_pc);
+        }
+
+        // Advance the step counter; pc_hint = next instruction to be fetched
+        state.machine.fault_injection_context.step(state.machine.cpu().pc);
+
+        // EXECUTE_INSTRUCTION_AGAIN: re-execute the same instruction at its original PC.
+        // Injection is disabled for the recursive call to prevent infinite re-injection.
+        if state.machine.fault_injection_context.is_injection("EXECUTE_INSTRUCTION_AGAIN", &pc) {
+            state.machine.fault_injection_context.print_injection_info(
+                &pc, opcode, "EXECUTE_INSTRUCTION_AGAIN",
+                &format!("re-executing at original pc={}", pc),
+            );
+            let post_exec_pc = state.machine.cpu().pc;
+            state.machine.set_pc(pc);
+            // Use an impossible injection_step value to suppress re-injection in the recursive call
+            let saved_injection_step = state.machine.fault_injection_context.injection_step;
+            state.machine.fault_injection_context.injection_step = u64::MAX;
+            let _ = Self::step(state);
+            state.machine.fault_injection_context.injection_step = saved_injection_step;
+            state.machine.set_pc(post_exec_pc);
+        }
+
+        // <------------------------ END OF FAULT INJECTION ------------------------>
 
         // A STOP instruction signals the end of the program
         if opcode == <StopInstruction as Instruction<Self, F>>::OPCODE {
