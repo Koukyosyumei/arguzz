@@ -3,6 +3,8 @@
 
 projects/pico-fuzzer/pico/
 projects/sp1-fuzzer/sp1/
+projects/valida-fuzzer/valida-vm
+
 **/arguzz-x-sp1.log.1
 **/arguzz-x-sp1.log
 *build.csv

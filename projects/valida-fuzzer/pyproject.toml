@@ -1,0 +1,23 @@
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "valida-fuzzer"
+version = "0.0.1"
+description="Fuzzer for the valida zkVM"
+requires-python = ">= 3.10"
+authors = []
+readme = "README.md"
+dependencies = [
+  "circil",
+  "zkvm-fuzzer-utils"
+]
+
+[project.scripts]
+valida-fuzzer = "valida_fuzzer.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["valida_fuzzer*"]
+exclude = []
