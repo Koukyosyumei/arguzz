@@ -175,9 +175,10 @@ class CircIL2ValidaAssemblyEmitter:
             raise NotImplementedError(f"_expr_to_fp: unsupported type {type(expr)}")
 
     def _as_imm(self, expr) -> int | None:
-        """If expr is a constant, return its integer value; otherwise None."""
+        """If expr is a constant, return its value as a signed i32; otherwise None."""
         if isinstance(expr, Integer):
-            return expr.value
+            v = expr.value & 0xFFFFFFFF
+            return v if v <= 0x7FFFFFFF else v - 0x100000000
         elif isinstance(expr, Boolean):
             return 1 if expr.value else 0
         return None
