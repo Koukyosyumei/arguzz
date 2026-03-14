@@ -128,14 +128,14 @@ class CircuitFuzzer(CircuitFuzzerBase[InstrKind, InjectionKind]):
     def __init__(
         self,
         project_dir: Path,
-        jolt_dir: Path,
+        valida_dir: Path,
         rng: Random,
         only_modify_word: bool,
         no_inline_assembly: bool,
     ):
         super().__init__(
             project_dir,
-            jolt_dir,
+            valida_dir,
             create_fuzzer_config(only_modify_word),
             rng,
             create_circuit_config(no_inline_assembly),

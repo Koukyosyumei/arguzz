@@ -8,7 +8,7 @@ VALIDA_AVAILABLE_COMMITS_OR_BRANCHES = [
     "debuggable-v0.10.0"
 ]
 VALIDA_ZKVM_GIT_REPOSITORY = "https://github.com/Koukyosyumei/valida-vm/tree/debuggable-v0.10.0"
-RUST_TOOLCHAIN_VERSION = "1.93.1"
+RUST_TOOLCHAIN_VERSION = "nightly-2025-08-04"
 
 #
 # Rust Magic Values

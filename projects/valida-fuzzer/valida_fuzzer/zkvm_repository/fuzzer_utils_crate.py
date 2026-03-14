@@ -5,7 +5,7 @@ from zkvm_fuzzer_utils.file import create_file
 
 def create_cargo_toml(root: Path):
     create_file(
-        root / "crates" / "fuzzer_utils" / "Cargo.toml",
+        root / "fuzzer_utils" / "Cargo.toml",
         """[package]
 name = "fuzzer_utils"
 version = "1.0.0"
@@ -19,7 +19,7 @@ lazy_static = "1.4"
 
 def create_lib_rs(root: Path):
     create_file(
-        root / "crates" / "fuzzer_utils" / "src" / "lib.rs",
+        root / "fuzzer_utils" / "src" / "lib.rs",
         """use std::sync::Mutex;
 use lazy_static::lazy_static;
 
