@@ -75,23 +75,30 @@ clap = {{ version = "4.0", features = ["derive"] }}
         if self.requires_fuzzer_utils:
             buf.write("use fuzzer_utils;\n")
 
-        buf.write("""\
+        if self.is_fault_injection:
+            buf.write(
+                "use valida_basic_api::commands::common::{default_config, prepare_runtime};\n"
+            )
+        else:
+            buf.write("use valida_basic_api::commands::common::prepare_runtime;\n")
+
+        prover_options_import = ", ProverOptions" if self.is_fault_injection else ""
+        buf.write(f"""\
 use clap::Parser;
 use std::time::Instant;
 use p3_baby_bear::BabyBear;
 use valida_assembler::assemble;
-use valida_basic_api::commands::common::prepare_runtime;
-use valida_basic_api::{BasicMachine, BasicMachineMetrics};
+use valida_basic_api::{{BasicMachine, BasicMachineMetrics}};
 use valida_cpu::MachineWithRegisters;
-use valida_machine::{
-    get_fixed_advice_provider, AdviceProviderWithDefault, Machine, ProgramROM,
+use valida_machine::{{
+    get_fixed_advice_provider, AdviceProviderWithDefault, Machine{prover_options_import}, ProgramROM,
     WriteCallbackWithDefault, SegmentMachine
-};
+}};
 use valida_program::MachineWithProgramROM;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
-struct Args {
+struct Args {{
 """)
 
         if self.is_trace_collection:
@@ -173,11 +180,11 @@ struct Args {
     .expect("runtime init failed");
 
     // Run the machine and measure time.
-    let timer = Instant::now();
+    let exec_timer = Instant::now();
     let mut state = machine.start(&mut runtime);
     let mut metrics = BasicMachineMetrics::initialize();
-    let (_instance_data, output) = BasicMachine::run(&mut state, &mut metrics);
-    let elapsed = timer.elapsed();
+    let (instance_data, output) = BasicMachine::run(&mut state, &mut metrics);
+    let exec_elapsed = exec_timer.elapsed();
 
     // Parse the 4-byte LE output as a u32.
     let result_bytes: [u8; 4] = output[0..4].try_into().expect("output too short");
@@ -186,9 +193,52 @@ struct Args {
     println!(
         "<record>{{\"context\":\"Execution\", \"status\":\"success\", \"output\":\"{}\", \"time\":\"{:.2?}\"}}</record>",
         result,
-        elapsed
+        exec_elapsed
     );
+""")
+
+        # During fault-injection runs, prove and verify the trace so that
+        # record.is_success() has the same semantic as all other zkVM fuzzers:
+        # "the proof was generated AND the verifier accepted it."  Without this
+        # step the oracle in fuzzer.py would flag every output-diverging injection
+        # as a soundness bug even when the prover correctly rejects the trace.
+        if self.is_fault_injection:
+            buf.write("""\
+    // When running with --inject, prove and verify the trace.
+    // This ensures record.is_success() means "verifier accepted the proof",
+    // matching the oracle semantics used by all other zkVM fuzzers.
+    if args.inject {
+        let num_chips = BasicMachine::<BabyBear>::NUM_CHIPS;
+        let prover_opts = ProverOptions {
+            show_main: vec![false; num_chips],
+            show_public: vec![false; num_chips],
+            show_interactions: vec![false; num_chips],
+            show_public_dims: false,
+            show_main_dims: false,
+            show_permutation_dims: false,
+        };
+        let prove_timer = Instant::now();
+        let config = default_config();
+        let show_preprocessed = vec![false; num_chips];
+        let (pk, vk) = state.machine.pre_process(&config, show_preprocessed, false);
+        let proof = state.machine.prove(&config, &pk, prover_opts, &instance_data);
+        let show_public_verifier = vec![false; num_chips];
+        match state.machine.verify(&config, &proof, &vk, &instance_data, show_public_verifier) {
+            Ok(()) => {
+                println!(
+                    "<record>{{\\\"context\\\":\\\"Prover & Verifier\\\", \\\"status\\\":\\\"success\\\", \\\"time\\\":\\\"{:.2?}\\\"}}</record>",
+                    prove_timer.elapsed()
+                );
+            }
+            Err(e) => {
+                eprintln!("Proof verification failed: {:?}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 }
 """)
+        else:
+            buf.write("}\n")
 
         create_file(self.root / "src" / "main.rs", buf.getvalue())
