@@ -65,6 +65,7 @@ install-fuzzer-dependencies: $(PYTHON)
 	cd projects/sp1-fuzzer && $(PYTHON) -m pip install -r requirements.txt
 	cd projects/openvm-fuzzer && $(PYTHON) -m pip install -r requirements.txt
 	cd projects/pico-fuzzer && $(PYTHON) -m pip install -r requirements.txt
+	cd projects/ziren-fuzzer && $(PYTHON) -m pip install -r requirements.txt
 
 install-plotting-helpers: $(PYTHON)
 	cd scripts && $(PYTHON) -m pip install -r requirements.txt
@@ -111,6 +112,7 @@ tmux-all-explore:
 	$(MAKE) .tmux-all-explore-template ZKVM_TARGET=pico
 	$(MAKE) .tmux-all-explore-template ZKVM_TARGET=risc0
 	$(MAKE) .tmux-all-explore-template ZKVM_TARGET=sp1
+	$(MAKE) .tmux-all-explore-template ZKVM_TARGET=ziren
 
 # ---------------------------------- Refind ---------------------------------- #
 
@@ -414,3 +416,20 @@ pico-explore-no-schedular:
 
 pico-explore-no-modification:
 	$(MAKE) .zkvm-explore-no-modification ZKVM_TARGET=pico
+
+# ---------------------------------------------------------------------------- #
+#                                Ziren Control                                 #
+# ---------------------------------------------------------------------------- #
+
+ziren-explore-default:
+	$(MAKE) .zkvm-explore-default ZKVM_TARGET=ziren
+
+ziren-explore-no-inline:
+	$(MAKE) .zkvm-explore-no-inline ZKVM_TARGET=ziren
+
+ziren-explore-no-schedular:
+	$(MAKE) .zkvm-explore-no-schedular ZKVM_TARGET=ziren
+
+ziren-explore-no-modification:
+	$(MAKE) .zkvm-explore-no-modification ZKVM_TARGET=ziren
+
