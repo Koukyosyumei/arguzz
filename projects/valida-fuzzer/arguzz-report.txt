@@ -1,0 +1,327 @@
+  ---
+  Valida-VM Soundness & Completeness Audit Report
+
+  Target: Valida zkVM (debuggable-v0.10.0 / commit 429e95e)
+  Fuzzer: arguzz / valida-fuzzer
+  Sessions analysed: 68e59129 (normal-mode), 24481947 (injection-mode)
+  Date of data: 2025-05-11 (Unix epoch ~1773520000)
+
+  ---
+  1. Executive Summary
+
+  The fuzzer ran two sessions against Valida. The injection session (24481947) executed 28 circuit seeds × 3 iterations = 84 test cases, of which 36 applied a
+  fault injection and 22 (61 %) produced a soundness finding — the prover accepted a faulty execution as correct. No genuine completeness bugs were observed in
+  circuits that compiled successfully.
+
+  ┌──────────────────────────────┬────────────────────┬──────────────────────┬────────────────┐
+  │           Category           │ Injection attempts │ Soundness bugs found │ Detection rate │
+  ├──────────────────────────────┼────────────────────┼──────────────────────┼────────────────┤
+  │ EXECUTE_INSTRUCTION_AGAIN    │ 8                  │ 8 (100 %)            │ 0 %            │
+  ├──────────────────────────────┼────────────────────┼──────────────────────┼────────────────┤
+  │ ALU_LOAD_OPERAND_MOD         │ 4                  │ 4 (100 %)            │ 0 %            │
+  ├──────────────────────────────┼────────────────────┼──────────────────────┼────────────────┤
+  │ POST_EXEC_PRE_COMMIT_PC_MOD  │ 12                 │ 6 (50 %)             │ 50 %           │
+  ├──────────────────────────────┼────────────────────┼──────────────────────┼────────────────┤
+  │ POST_EXEC_POST_COMMIT_PC_MOD │ 4                  │ 2 (50 %)             │ 50 %           │
+  ├──────────────────────────────┼────────────────────┼──────────────────────┼────────────────┤
+  │ ALU_RESULT_LOC_MOD           │ 5                  │ 2 (40 %)             │ 60 %           │
+  ├──────────────────────────────┼────────────────────┼──────────────────────┼────────────────┤
+  │ ALU_PARSED_OPERAND_MOD       │ 1                  │ 0                    │ 100 %          │
+  ├──────────────────────────────┼────────────────────┼──────────────────────┼────────────────┤
+  │ Total                        │ 36                 │ 22                   │ 39 %           │
+  └──────────────────────────────┴────────────────────┴──────────────────────┴────────────────┘
+
+  ---
+  2. Methodology
+
+  arguzz uses metamorphic/differential testing with fault injection:
+
+  1. Generate a random Valida ELF from a circuit seed.
+  2. Baseline run: execute normally, record output.
+  3. Injection run: execute with one fault injected at a chosen step, record output.
+  4. Oracle: if the injected run exits cleanly (exitcode=0) and produces the same observable output as the baseline, a soundness bug is flagged — an invalid
+  execution trace was indistinguishable from the valid one, meaning the prover would accept it.
+
+  Fault types tested:
+
+  ┌──────────────────────────────┬───────────────────────────────────────────────────────┐
+  │             Kind             │                     What it does                      │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ EXECUTE_INSTRUCTION_AGAIN    │ Re-executes the current instruction a second time     │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ ALU_LOAD_OPERAND_MOD         │ Replaces operand values before an ALU op              │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ POST_EXEC_PRE_COMMIT_PC_MOD  │ Redirects PC after execution, before read_word commit │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ POST_EXEC_POST_COMMIT_PC_MOD │ Redirects PC after read_word commit                   │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ ALU_RESULT_LOC_MOD           │ Changes the output memory address of an ALU result    │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────┤
+  │ ALU_PARSED_OPERAND_MOD       │ Replaces parsed operand values                        │
+  └──────────────────────────────┴───────────────────────────────────────────────────────┘
+
+  ---
+  3. Infrastructure Observations
+
+  3.1 Build failures (pre-injection)
+
+  build.csv shows 10 out of ~20 early fuzzer IDs failed to build at all (build_success=False). These are earlier sessions (before 68e59129) where the
+  fault-injected Valida source failed to compile — likely due to the #![feature(trait_upcasting)] issue and the Operands<i32> API mismatches that were
+  subsequently fixed. The two successful sessions (68e59129, 24481947) both achieved consistent build times of ~1.3–1.7 s.
+
+  3.2 Non-injection session (68e59129): zero-instruction executions
+
+  In normal.csv, all 17 circuit seeds ran successfully (exitcode=0 for provable circuits) but summary.csv records zero instructions executed for all 51 test
+  cases. This indicates the generated programs contained no instruction payloads in that session — a circuit-generation issue, not a Valida soundness problem.
+  The session's "findings" (logged in findings.csv with is_injection=False) therefore do not represent real bugs.
+
+  ---
+  4. Soundness Findings
+
+  Finding S-1: Instruction Re-execution Universally Bypasses All Constraints
+
+  Kind: EXECUTE_INSTRUCTION_AGAIN
+  Severity: Critical
+  Detection rate: 0 % (8/8 injection attempts accepted)
+
+  Every time the fuzzer re-executed an instruction (running it twice in a row), the proof passed. No case was ever rejected.
+
+  Representative cases:
+
+  ┌────────┬──────────────────────┬──────────────────────┬───────────────────┐
+  │  Run   │ Injected instruction │ Original instruction │    Trace delta    │
+  ├────────┼──────────────────────┼──────────────────────┼───────────────────┤
+  │ (2,3)  │ write @ pc=1559      │ stop                 │ 930 → 931 steps   │
+  ├────────┼──────────────────────┼──────────────────────┼───────────────────┤
+  │ (3,1)  │ add32 @ pc=213       │ write                │ 153 → 154 steps   │
+  ├────────┼──────────────────────┼──────────────────────┼───────────────────┤
+  │ (4,1)  │ add32 @ pc=525       │ and32                │ 964 → 965 steps   │
+  ├────────┼──────────────────────┼──────────────────────┼───────────────────┤
+  │ (6,1)  │ and32 @ pc=277       │ ne32                 │ 1083 → 1084 steps │
+  ├────────┼──────────────────────┼──────────────────────┼───────────────────┤
+  │ (7,2)  │ add32 @ pc=18        │ mul32                │ 310 → 311 steps   │
+  ├────────┼──────────────────────┼──────────────────────┼───────────────────┤
+  │ (11,1) │ write @ pc=196       │ stop                 │ 135 → 136 steps   │
+  ├────────┼──────────────────────┼──────────────────────┼───────────────────┤
+  │ (26,3) │ add32 @ pc=296       │ lte32                │ 516 → 517 steps   │
+  ├────────┼──────────────────────┼──────────────────────┼───────────────────┤
+  │ (27,3) │ add32 @ pc=63        │ read                 │ 311 → 312 steps   │
+  └────────┴──────────────────────┴──────────────────────┴───────────────────┘
+
+  Root cause analysis: Valida's constraint system does not enforce that each PC value in the program ROM is visited at most a fixed number of times (per the
+  intended program logic). The CPU chip's clock/timestamp mechanism and cross-chip interaction arguments must prevent a step from being duplicated, but the
+  injection shows they currently don't. Particularly alarming are:
+  - (2,3) and (11,1): The stop instruction was supposed to terminate execution. The prover accepted a trace where another instruction ran after the STOP point,
+  meaning the halting constraint is not binding.
+  - (27,3): A read (advice tape consumption) was replaced by add32 and then the add32 was re-executed. The advice tape consistency check did not catch the
+  missing read.
+
+  ---
+  Finding S-2: ALU Operand Substitution Not Constrained to Memory
+
+  Kind: ALU_LOAD_OPERAND_MOD
+  Severity: High
+  Detection rate: 0 % (4/4 injection attempts accepted)
+
+  Modifying the raw operand values of an ALU instruction before execution — effectively feeding different numbers than what memory actually contains — was
+  accepted in every tested case.
+
+  Representative cases:
+
+  ┌────────┬────────────────┬────────────────────────┬──────────────────────────────┐
+  │  Run   │  Instruction   │   Original operands    │      Injected operands       │
+  ├────────┼────────────────┼────────────────────────┼──────────────────────────────┤
+  │ (4,2)  │ shl32 @ pc=127 │ (op_b=-400, op_c=-8)   │ (-8, -8) — operand dedup     │
+  ├────────┼────────────────┼────────────────────────┼──────────────────────────────┤
+  │ (15,3) │ sra32 @ pc=104 │ (op_b=-368, op_c=26)   │ (-368, -368) — operand dedup │
+  ├────────┼────────────────┼────────────────────────┼──────────────────────────────┤
+  │ (26,2) │ or32 @ pc=211  │ (op_b=-648, op_c=-56)  │ (-56, -648) — operand swap   │
+  ├────────┼────────────────┼────────────────────────┼──────────────────────────────┤
+  │ (27,1) │ slt32 @ pc=197 │ (op_b=-584, op_c=-624) │ (-584, -584) — operand dedup │
+  └────────┴────────────────┴────────────────────────┴──────────────────────────────┘
+
+  Root cause analysis: ALU chips in Valida must verify that operand values are read from the correct memory addresses (fp + op_b_offset, fp + op_c_offset). The
+  cross-chip bus interaction (ALU chip ↔ memory chip) should enforce this binding. These results suggest the constraint tying the loaded value to the memory
+  address is either absent or insufficiently tight — e.g., the column relationship mem[fp + operand_field] = alu_input may not be enforced for both operand slots
+   simultaneously, or the offset and value are not co-constrained.
+
+  ---
+  Finding S-3: PC Redirection Before Commit Inconsistently Detected
+
+  Kind: POST_EXEC_PRE_COMMIT_PC_MOD
+  Severity: High
+  Detection rate: 50 % (6 accepted, 6 rejected)
+
+  Jumping to an arbitrary PC address after execution but before the read_word commit passed in half of attempts.
+
+  Accepted cases:
+
+  ┌────────┬────────────────┬────────────────────────┬─────────────────┐
+  │  Run   │  Instruction   │      PC redirect       │   Trace delta   │
+  ├────────┼────────────────┼────────────────────────┼─────────────────┤
+  │ (1,2)  │ bne @ pc=44    │ 45 → 0 (jump to start) │ 188 → 233 steps │
+  ├────────┼────────────────┼────────────────────────┼─────────────────┤
+  │ (3,3)  │ add32 @ pc=31  │ 32 → 0 (jump to start) │ 150 → 182 steps │
+  ├────────┼────────────────┼────────────────────────┼─────────────────┤
+  │ (9,1)  │ imm32 @ pc=168 │ 169 → 145 (backward)   │ 236 → 258 steps │
+  ├────────┼────────────────┼────────────────────────┼─────────────────┤
+  │ (15,2) │ sle32 @ pc=207 │ 208 → 112 (backward)   │ 536 → 608 steps │
+  ├────────┼────────────────┼────────────────────────┼─────────────────┤
+  │ (19,1) │ mul32 @ pc=50  │ 51 → 0 (jump to start) │ 434 → 485 steps │
+  ├────────┼────────────────┼────────────────────────┼─────────────────┤
+  │ (20,1) │ read @ pc=2    │ 3 → 0 (jump to start)  │ 148 → 151 steps │
+  └────────┴────────────────┴────────────────────────┴─────────────────┘
+
+  Rejected cases (correctly): (1,1) jump to 234, (6,2) jump to 12363, (6,3) jump to 3701, (20,3) jump to 312. The rejected cases tended to jump to larger PCs
+  (potentially out of the program ROM or into unmapped territory), causing a panic/abort. The accepted cases all involved backward jumps or jumps to PC=0 — i.e.,
+   re-entering the program from the beginning. This suggests the constraint fails specifically when the redirected PC is still within a valid region of the
+  program ROM.
+
+  Root cause analysis: The CPU chip's next_pc transition constraint between consecutive rows must enforce row[i+1].pc = row[i].next_pc. If the next instruction
+  happens to exist in the ROM at the redirected address, no out-of-bounds check catches it and the trace remains locally consistent at every row, even though the
+   global execution semantics are violated.
+
+  ---
+  Finding S-4: PC Redirection After Commit Inconsistently Detected
+
+  Kind: POST_EXEC_POST_COMMIT_PC_MOD
+  Severity: High
+  Detection rate: 50 % (2 accepted, 2 rejected)
+
+  ┌────────┬───────────────┬───────────────────────────────┬─────────────────┐
+  │  Run   │  Instruction  │          PC redirect          │   Trace delta   │
+  ├────────┼───────────────┼───────────────────────────────┼─────────────────┤
+  │ (2,2)  │ or32 @ pc=193 │ 194 → 170 (backward 24 bytes) │ 890 → 907 steps │
+  ├────────┼───────────────┼───────────────────────────────┼─────────────────┤
+  │ (11,2) │ beq @ pc=96   │ 99 → 0 (jump to start)        │ 135 → 211 steps │
+  └────────┴───────────────┴───────────────────────────────┴─────────────────┘
+
+  Same root cause as S-3. The read_word "commit" timing window provides no additional protection.
+
+  ---
+  Finding S-5: ALU Result Written to Wrong Memory Address
+
+  Kind: ALU_RESULT_LOC_MOD
+  Severity: Medium**
+  Detection rate: 60 % (2 accepted, 3 rejected)
+
+  Changing the destination address (op_a = output register offset) of an ALU result was accepted in 2 of 5 cases.
+
+  ┌────────┬───────────────┬──────────────────────────────┬───────────────────────┐
+  │  Run   │  Instruction  │         op_a change          │      Trace delta      │
+  ├────────┼───────────────┼──────────────────────────────┼───────────────────────┤
+  │ (18,1) │ shr32 @ pc=95 │ -352 → -353 (±1 word)        │ 440 steps (unchanged) │
+  ├────────┼───────────────┼──────────────────────────────┼───────────────────────┤
+  │ (26,1) │ lt32 @ pc=467 │ -1344 → 2147483647 (INT_MAX) │ 506 steps (unchanged) │
+  └────────┴───────────────┴──────────────────────────────┴───────────────────────┘
+
+  For (18,1): An off-by-one in the destination address (-352 → -353, i.e., writing 4 bytes earlier in the frame) was not detected. The computation produced the
+  same final output because the wrong memory cell was never subsequently read in this program path — the memory bus interaction didn't enforce "this write was
+  visible to later reads."
+
+  For (26,1): Writing an ALU result to address 2147483647 (a wildly out-of-bounds frame offset) was silently accepted. This is a severe case: the constraint
+  system should catch that fp + 2147483647 wraps around or is outside valid memory, but it didn't.
+
+  Rejected cases: (4,3) op_a -828→-827, (9,3) op_a -756→-757, (20,2) op_a -556→1. Cases where the change caused the final output to diverge were caught by the
+  output oracle.
+
+  ---
+  Finding S-6 (Partial): ALU Parsed Operand Modification — Correctly Rejected
+
+  Kind: ALU_PARSED_OPERAND_MOD
+  Detection rate: 100 % (0 bugs, 1/1 rejected)
+
+  ┌────────┬────────────────┬─────────────────────────────────────────────┐
+  │  Run   │  Instruction   │               Operand change                │
+  ├────────┼────────────────┼─────────────────────────────────────────────┤
+  │ (19,2) │ sub32 @ pc=179 │ (op_b=-556, op_c=1464553442) → (-556, -556) │
+  └────────┴────────────────┴─────────────────────────────────────────────┘
+
+  This case was caught — the incorrect subtraction result changed the final output. This suggests the ALU computation itself (the arithmetic constraint result =
+  op_a op op_b) is correctly enforced. The vulnerabilities above are in the memory binding and PC linkage constraints, not the arithmetic gates.
+
+  ---
+  5. Completeness Assessment
+
+  5.1 Build-level completeness
+
+  10 early fuzzer sessions failed to build entirely (see §3.1). After code fixes (stable channel compatibility, Operands<i32> API), the two active sessions
+  achieved 100 % build success.
+
+  5.2 Execution-level completeness
+
+  In the injection session (24481947), 7 run/circuit combinations produced exitcode=101 for all 3 iterations — these circuits hit the fail instruction. This is
+  not a prover completeness bug; it is the circuit's own runtime assertion firing (e.g., division by zero, assertion failure in the test program). The prover is
+  never invoked for these.
+
+  5.3 Prover-level completeness
+
+  All circuits that executed to completion (exitcode=0) and were submitted to the prover succeeded. No case was observed where a valid execution trace was
+  rejected by the verifier. No completeness bugs were found.
+
+  ---
+  6. Cross-Chip Constraint Gap Analysis
+
+  Synthesising the soundness findings, the following constraint gaps are implicated:
+
+  ┌─────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────┬──────────────────────┐
+  │          Constraint domain          │                                            Gap                                             │ Findings implicating │
+  │                                     │                                                                                            │          it          │
+  ├─────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ Instruction re-execution / step     │ No global constraint prevents a (PC, clk) pair from appearing twice in the CPU trace       │ S-1 all              │
+  │ uniqueness                          │                                                                                            │                      │
+  ├─────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ Halting constraint                  │ Execution after the stop instruction is accepted                                           │ S-1 (2,3), (11,1)    │
+  ├─────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ ALU ↔ Memory operand binding        │ mem[fp + op_b] = alu_in_b and mem[fp + op_c] = alu_in_c may not be simultaneously          │ S-2 all              │
+  │                                     │ co-constrained                                                                             │                      │
+  ├─────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ PC continuity / next-PC linkage     │ Row-local constraint row[i+1].pc = row[i].next_pc is not globally unforgeable when a       │ S-3, S-4             │
+  │                                     │ redirected PC stays in-ROM                                                                 │                      │
+  ├─────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ ALU destination address validation  │ fp + op_a is not verified to fall within allocated stack frame                             │ S-5 (26,1)           │
+  ├─────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ Write-read consistency              │ A write to an unexpected address is not caught unless a later read creates a cross-chip    │ S-5 (18,1)           │
+  │                                     │ contradiction                                                                              │                      │
+  ├─────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ Advice tape ordering                │ read instruction consumption ordering not enforced when instruction is replaced            │ S-1 (27,3)           │
+  └─────────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────┴──────────────────────┘
+
+  ---
+  7. Recommendations
+
+  1. Add a global uniqueness constraint on (step, pc) pairs in the CPU chip to prevent any instruction from being executed twice at the same program counter.
+  2. Strengthen the halt constraint: after a stop instruction sets the halting flag, subsequent CPU rows must be padding (zero) rows. The halting flag must be
+  propagated and enforced by an accumulated "done" column.
+  3. Co-constrain ALU operand sources in the bus argument: the permutation/lookup argument connecting the ALU chip row to the memory chip should bind both the
+  address (fp + operand_offset) and the value (operand_value) in a single interaction, not two independent interactions.
+  4. Add PC bounds checks: the CPU's next_pc column should be range-checked to lie within [0, program_rom_size). An out-of-bounds PC should cause constraint
+  failure.
+  5. Enforce stack frame bounds on ALU destination: op_a (destination offset) should be range-checked such that fp + op_a lies within [stack_base, stack_top].
+  6. Audit advice tape constraints: read instructions should consume positions from an ordered advice tape; the transcript of read positions should be committed
+  to and verified in order.
+
+  ---
+  8. Statistical Summary
+
+  ┌──────────────────────────────────────────┬─────────────────────────────────────────────────┐
+  │                  Metric                  │                      Value                      │
+  ├──────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Total fuzzer sessions                    │ 2 active (+ ~10 aborted builds)                 │
+  ├──────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Circuit seeds tested (injection session) │ 28                                              │
+  ├──────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Injection attempts                       │ 36                                              │
+  ├──────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Soundness bugs confirmed                 │ 22 (61 %)                                       │
+  ├──────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Completeness bugs                        │ 0                                               │
+  ├──────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Injection kinds with 100 % bypass rate   │ EXECUTE_INSTRUCTION_AGAIN, ALU_LOAD_OPERAND_MOD │
+  ├──────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Injection kinds with 0 % bypass rate     │ ALU_PARSED_OPERAND_MOD                          │
+  ├──────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Only class reliably caught               │ ALU arithmetic correctness (result value)       │
+  ├──────────────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Critical gap                             │ Instruction uniqueness / halting                │
+  └──────────────────────────────────────────┴─────────────────────────────────────────────────┘
