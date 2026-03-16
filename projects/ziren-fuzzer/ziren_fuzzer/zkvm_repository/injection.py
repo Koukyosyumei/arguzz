@@ -54,7 +54,7 @@ members = [
         [
             (
                 r"\[dependencies\]",
-                "[dependencies]\nrand = { workspace = true }\nfuzzer_utils = { workspace = true }",
+                "[dependencies]\nfuzzer_utils = { workspace = true }",
             ),
         ],
     )

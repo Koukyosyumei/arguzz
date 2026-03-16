@@ -96,6 +96,7 @@ zkm-sdk = {{ path = "{self.zkvm_path}/crates/sdk" }}
 
 [build-dependencies]
 zkm-build = {{ path = "{self.zkvm_path}/crates/build" }}
+camino = "=1.2.1"
 """
         )
         create_file(
@@ -327,6 +328,7 @@ zkm-zkvm = {{ path = "{self.zkvm_path}/crates/zkvm/entrypoint" }}
         buffer.write("#![allow(unconditional_panic)]\n")
         buffer.write("#![allow(unused_variables)]\n")
         buffer.write("#![allow(arithmetic_overflow)]\n\n")
+        buffer.write("#![feature(asm_experimental_arch)]\n\n")
 
         buffer.write("zkm_zkvm::entrypoint!(main);\n")
 

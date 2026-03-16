@@ -5,10 +5,10 @@ from ziren_fuzzer.kinds import InjectionKind, InstrKind
 #
 
 ZIREN_AVAILABLE_COMMITS_OR_BRANCHES = [
-    "main"
+    "latticevm"
 ]
 ZIREN_ZKVM_GIT_REPOSITORY = "https://github.com/ProjectZKM/Ziren"
-RUST_TOOLCHAIN_VERSION = "nightly-2025-07-17"
+RUST_TOOLCHAIN_VERSION = "nightly-2025-10-30"
 
 #
 # Rust Magic Values
