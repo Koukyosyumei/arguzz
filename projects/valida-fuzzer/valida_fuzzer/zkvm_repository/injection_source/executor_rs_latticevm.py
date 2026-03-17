@@ -69,10 +69,10 @@ use valida_machine::{
     generate_permutation_trace, verify_constraints, BusArgument, Chip, ChipProof, ChipTraceHeight,
     ChipWithPersistence, Commitments, ConstraintError, Instruction, InteractionMap, Machine,
     MachineInstanceData, MachineProof, MachineProverKey, MachineRuntime, MachineVerifierKey,
-    MachineWithFinalMemoryState, MemoryAccessTimestamp, MemoryBackendTrait, OpenedValues, Operands,
-    PcsError, ProgramROM, ProverOptions, PublicTrace, PublicValues, RunningMachine, SegmentMachine,
-    StarkConfig, StarkField, StoppingFlag, StorageBackendType, ValidaStorageBackend,
-    VerificationError, Word, NUM_CHIPS,
+    MachineWithFinalMemoryState, MemoryAccessTimestamp, MemoryBackendTrait, MemoryRecord,
+    OpenedValues, Operands, PcsError, ProgramROM, ProverOptions, PublicTrace, PublicValues,
+    RunningMachine, SegmentMachine, StarkConfig, StarkField, StoppingFlag, StorageBackendTrait,
+    StorageBackendType, ValidaStorageBackend, VerificationError, Word, NUM_CHIPS,
 };
 use valida_memory::{
     add_diff_bytes_receives, columns::MemoryCols, MachineWithMemoryChip, MemoryBackend,
@@ -266,6 +266,13 @@ impl ValidaFaultInjectionContext {
         } else {
             pc.saturating_sub(steps * BYTES_PER_INSTR as u32)
         }
+    }
+
+    /// Randomly modifies a `Word<u8>` value (for ALU result modification).
+    pub fn random_mod_of_word_u8(&mut self, value: Word<u8>) -> Word<u8> {
+        let v_u32: u32 = value.into();
+        let new_u32 = self.random_mod_of_i32(v_u32 as i32) as u32;
+        Word::from(new_u32)
     }
 
     /// Returns a cached or newly generated `Operands<i32>` for this PC.
@@ -1979,6 +1986,144 @@ impl<F: StarkField> Machine<F> for BasicMachine<F> {
                 // <------------------------ END OF FAULT INJECTION ------------------------>
             }
         };
+
+        // <----------------------- START OF FAULT INJECTION ----------------------->
+
+        // ALU_RESULT_MOD: overwrite the ALU output in the memory backend, memory chip
+        // operation log, and the relevant ALU chip operation log so that the trace contains
+        // a consistent-but-wrong result.  This specifically tests whether the constraint
+        // `output == f(input_1, input_2)` is enforced by the verifier.
+        if state.machine.fault_injection_context.is_injection("ALU_RESULT_MOD", &pc) {
+            let is_word_alu_opcode =
+                opcode == <Add32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <Sub32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <Mul32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <Mulhs32Instruction as Instruction<Self, F>>::OPCODE ||
+                opcode == <Mulhu32Instruction as Instruction<Self, F>>::OPCODE ||
+                opcode == <Div32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <SDiv32Instruction  as Instruction<Self, F>>::OPCODE ||
+                opcode == <Shl32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <Shr32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <Sra32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <And32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <Or32Instruction    as Instruction<Self, F>>::OPCODE ||
+                opcode == <Xor32Instruction   as Instruction<Self, F>>::OPCODE;
+            let is_bool_alu_opcode =
+                opcode == <Lt32Instruction    as Instruction<Self, F>>::OPCODE ||
+                opcode == <Lte32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <Slt32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <Sle32Instruction   as Instruction<Self, F>>::OPCODE ||
+                opcode == <Ne32Instruction    as Instruction<Self, F>>::OPCODE ||
+                opcode == <Eq32Instruction    as Instruction<Self, F>>::OPCODE;
+
+            if is_word_alu_opcode || is_bool_alu_opcode {
+                // Destination address: fp + ops.a() (exec_ops.0[0] is the a-operand).
+                // Note: step_pc() already ran inside execute(), but fp is unchanged.
+                let write_addr = (state.machine.cpu().fp as i32 + exec_ops.0[0]) as u32;
+                let original_a: Word<u8> = state.runtime.memory_backend().get_value(write_addr);
+
+                // For bool-output ops, flip the boolean; for word-output ops, apply random mutation.
+                let new_a: Word<u8> = if is_bool_alu_opcode {
+                    let is_true: bool = { let v: u32 = original_a.into(); v != 0 };
+                    Word::from((!is_true) as u32)
+                } else {
+                    state.machine.fault_injection_context.random_mod_of_word_u8(original_a)
+                };
+
+                state.machine.fault_injection_context.print_injection_info(
+                    &pc, opcode, "ALU_RESULT_MOD",
+                    &format!("{:?} => {:?}", original_a, new_a),
+                );
+
+                // 1. Update the memory backend record.
+                state.runtime.memory_backend_mut().set(
+                    write_addr,
+                    MemoryRecord { value: new_a, last_accessed: MemoryAccessTimestamp::ThisSegment },
+                );
+
+                // 2. Update the last Write entry in the memory chip's operation log so
+                //    that the memory trace is consistent with the modified backend value.
+                // operations is HashMap<clk, SmallVec<[Operation; 4]>>; look up by current clock.
+                let clk = state.machine.cpu().clock;
+                if let Some(ops_vec) = state.machine.mem_mut().operations.get_mut(&clk) {
+                    for mem_op in ops_vec.iter_mut().rev() {
+                        if let valida_memory::Operation::Write(ref addr, ref mut val) = mem_op {
+                            if *addr == write_addr {
+                                *val = new_a;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 3. Update the ALU chip's operation log so that the chip trace shows the
+                //    modified output, making the full trace internally consistent.
+                if opcode == <Add32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::add::Operation::Add32(ref mut a, _, _)) =
+                        state.machine.add_u32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Sub32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::sub::Operation::Sub32(ref mut a, _, _)) =
+                        state.machine.sub_u32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Mul32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::mul::Operation::Mul32(ref mut a, _, _)) =
+                        state.machine.mul_32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Mulhs32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::mul::Operation::Mulhs32(ref mut a, _, _)) =
+                        state.machine.mul_32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Mulhu32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::mul::Operation::Mulhu32(ref mut a, _, _)) =
+                        state.machine.mul_32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Div32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::div::Operation::Div32(ref mut a, _, _)) =
+                        state.machine.div_u32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <SDiv32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::div::Operation::SDiv32(ref mut a, _, _)) =
+                        state.machine.div_u32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Shl32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::shift::Operation::Shl32(ref mut a, _, _)) =
+                        state.machine.shift_u32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Shr32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::shift::Operation::Shr32(ref mut a, _, _)) =
+                        state.machine.shift_u32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Sra32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::shift::Operation::Sra32(ref mut a, _, _)) =
+                        state.machine.shift_u32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <And32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::bitwise::Operation::And32(ref mut a, _, _)) =
+                        state.machine.bitwise_u32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Or32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::bitwise::Operation::Or32(ref mut a, _, _)) =
+                        state.machine.bitwise_u32_mut().operations.last_mut() { *a = new_a; }
+                } else if opcode == <Xor32Instruction as Instruction<Self, F>>::OPCODE {
+                    if let Some(valida_alu_u32::bitwise::Operation::Xor32(ref mut a, _, _)) =
+                        state.machine.bitwise_u32_mut().operations.last_mut() { *a = new_a; }
+                } else {
+                    // Bool-output ops: derive the new bool from new_a's u32 representation.
+                    let new_bool: bool = { let v: u32 = new_a.into(); v != 0 };
+                    if opcode == <Lt32Instruction as Instruction<Self, F>>::OPCODE {
+                        if let Some(valida_alu_u32::lt::Operation::Lt32(ref mut a, _, _)) =
+                            state.machine.lt_u32_mut().operations.last_mut() { *a = new_bool; }
+                    } else if opcode == <Lte32Instruction as Instruction<Self, F>>::OPCODE {
+                        if let Some(valida_alu_u32::lt::Operation::Lte32(ref mut a, _, _)) =
+                            state.machine.lt_u32_mut().operations.last_mut() { *a = new_bool; }
+                    } else if opcode == <Slt32Instruction as Instruction<Self, F>>::OPCODE {
+                        if let Some(valida_alu_u32::lt::Operation::Slt32(ref mut a, _, _)) =
+                            state.machine.lt_u32_mut().operations.last_mut() { *a = new_bool; }
+                    } else if opcode == <Sle32Instruction as Instruction<Self, F>>::OPCODE {
+                        if let Some(valida_alu_u32::lt::Operation::Sle32(ref mut a, _, _)) =
+                            state.machine.lt_u32_mut().operations.last_mut() { *a = new_bool; }
+                    } else if opcode == <Ne32Instruction as Instruction<Self, F>>::OPCODE {
+                        if let Some(valida_alu_u32::com::Operation::Ne32(ref mut a, _, _)) =
+                            state.machine.com_u32_mut().operations.last_mut() { *a = new_bool; }
+                    } else if opcode == <Eq32Instruction as Instruction<Self, F>>::OPCODE {
+                        if let Some(valida_alu_u32::com::Operation::Eq32(ref mut a, _, _)) =
+                            state.machine.com_u32_mut().operations.last_mut() { *a = new_bool; }
+                    }
+                }
+            }
+        }
+
+        // <------------------------ END OF FAULT INJECTION ------------------------>
 
         let log = state.machine.log_enabled();
 
