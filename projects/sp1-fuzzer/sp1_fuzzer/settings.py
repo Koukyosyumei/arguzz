@@ -5,9 +5,9 @@ from sp1_fuzzer.kinds import InjectionKind, InstrKind
 #
 
 SP1_AVAILABLE_COMMITS_OR_BRANCHES = [
-    "latticevm"
+    "db2a7b2f6d988024dc8b71ebfe656c96157a78c9"
 ]
-SP1_ZKVM_GIT_REPOSITORY = "https://github.com/Koukyosyumei/sp1/tree/latticevm"
+SP1_ZKVM_GIT_REPOSITORY = "https://github.com/succinctlabs/sp1"
 RUST_TOOLCHAIN_VERSION = "1.93.1"
 
 #

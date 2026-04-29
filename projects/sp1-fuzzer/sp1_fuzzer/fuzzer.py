@@ -9,6 +9,7 @@ from sp1_fuzzer.settings import (
     ENABLED_INJECTION_KINDS,
     PREFERRED_INSTRUCTIONS,
     RUST_GUEST_CORRECT_VALUE,
+    RUST_TOOLCHAIN_VERSION,
     TIMEOUT_PER_BUILD,
     TIMEOUT_PER_RUN,
 )
@@ -32,6 +33,7 @@ from zkvm_fuzzer_utils.fuzzer import (
     FuzzerConfig,
 )
 from zkvm_fuzzer_utils.injection import InjectionArguments
+from zkvm_fuzzer_utils.rust.cargo import CargoCmd
 from zkvm_fuzzer_utils.trace import Trace
 
 logger = logging.getLogger("fuzzer")
@@ -149,6 +151,28 @@ class CircuitFuzzer(CircuitFuzzerBase[InstrKind, InjectionKind]):
             self.is_fault_injection,
             self.is_trace_collection,
         ).create()
+
+    def build_project(self) -> list[ExecStatus]:
+        return [
+            CargoCmd.build()
+            .with_toolchain(RUST_TOOLCHAIN_VERSION)
+            .with_cd(self.project_dir)
+            .in_release()
+            .with_timeout(self.fuzzer_config.build_timeout)
+            .execute()
+        ]
+
+    def execute_project(self, arguments: list[str]) -> ExecStatus:
+        return (
+            CargoCmd.run()
+            .with_toolchain(RUST_TOOLCHAIN_VERSION)
+            .with_cd(self.project_dir)
+            .with_args(arguments)
+            .with_timeout(self.fuzzer_config.execution_timeout)
+            .in_release()
+            .with_explicit_clean_zombies()
+            .execute()
+        )
 
     def is_skip_fault_injection_inspection(
         self, trace: Trace, arguments: InjectionArguments[InjectionKind]
