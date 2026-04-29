@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 from ziren_fuzzer.zkvm_repository.fuzzer_utils_crate import create_fuzzer_utils_crate
@@ -45,8 +46,16 @@ members = [
     # prepend the fault injection structs and imports
     prepend_file(executor_path, prepend_str)
 
-    # apply targeted replacements
-    replace_in_file(executor_path, replacements)
+    # apply targeted replacements. The patches in `executor_rs_main.py` are
+    # literal Rust source, but `replace_in_file` interprets the pattern as a
+    # regex, so unescaped `(`, `)`, `?`, `[`, `]` (which appear in things like
+    # `(&mut self)`, `(&instruction)?`, `#[cfg(...)]`) silently fail to match.
+    # Escape patterns so they're treated as literals; the replacement strings
+    # have no regex backreferences (`\1`..`\9`), so they are passed through.
+    escaped_replacements = [
+        (re.escape(old), new.replace("\\", "\\\\")) for old, new in replacements
+    ]
+    replace_in_file(executor_path, escaped_replacements)
 
     # add rand and fuzzer_utils dependencies to executor's Cargo.toml
     replace_in_file(
