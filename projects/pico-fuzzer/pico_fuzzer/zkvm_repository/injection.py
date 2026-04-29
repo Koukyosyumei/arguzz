@@ -39,6 +39,14 @@ fuzzer_utils = {{ path = "{fuzzer_utils_crate_path}" }}""",
                 r"\[dependencies\]",
                 """[dependencies]\nfuzzer_utils.workspace = true""",
             ),
+            # Drop "strict" from the default feature set. It enables
+            # `deny(warnings)`, which under newer nightly toolchains promotes
+            # upstream warnings (e.g. `const_type_id` becoming stable) into
+            # build errors that block the fuzzer install.
+            (
+                r'default\s*=\s*\[([^\]]*?)"strict"\s*,?\s*',
+                r"default = [\1",
+            ),
         ],
     )
 

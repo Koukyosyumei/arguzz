@@ -7,9 +7,9 @@ from pico_fuzzer.kinds import InjectionKind, InstrKind
 PICO_AVAILABLE_COMMITS_OR_BRANCHES = [
     "main",
     "latticevm",
-    "dd5b7d1f4e164d289d110f1688509a22af6b241c",
+    "e09f8d7c4132ac717935896fccf8a713b1fae418",
 ]
-PICO_ZKVM_GIT_REPOSITORY = "https://github.com/DanielHoffmann91/pico.git"
+PICO_ZKVM_GIT_REPOSITORY = "https://github.com/brevis-network/pico.git"
 RUST_TOOLCHAIN_VERSION = "nightly-2025-08-04"
 
 #
