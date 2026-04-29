@@ -5,9 +5,9 @@ from valida_fuzzer.kinds import InjectionKind, InstrKind
 #
 
 VALIDA_AVAILABLE_COMMITS_OR_BRANCHES = [
-    "debuggable-v0.10.0"
+    "a13377060607ed3463cc17a7c8d005a9fe492b03"
 ]
-VALIDA_ZKVM_GIT_REPOSITORY = "https://github.com/Koukyosyumei/valida-vm/tree/debuggable-v0.10.0"
+VALIDA_ZKVM_GIT_REPOSITORY = "https://github.com/lita-xyz/valida-vm"
 RUST_TOOLCHAIN_VERSION = "1.88.0-nightly"
 
 #

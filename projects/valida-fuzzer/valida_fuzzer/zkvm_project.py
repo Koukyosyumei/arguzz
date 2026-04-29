@@ -10,8 +10,8 @@ from zkvm_fuzzer_utils.project import AbstractCircuitProjectGenerator
 from zkvm_fuzzer_utils.rust.common import ir_type_to_str
 
 # Git coordinates for Plonky3 that the Valida workspace uses.
-_P3_GIT_URL = "https://github.com/Koukyosyumei/lita-xyz-Plonky3.git"
-_P3_GIT_BRANCH = "debuggable"
+_P3_GIT_URL = "https://github.com/lita-xyz/Plonky3.git"
+_P3_GIT_BRANCH = "main"
 
 
 class CircuitProjectGenerator(AbstractCircuitProjectGenerator):
