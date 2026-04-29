@@ -66,6 +66,7 @@ install-fuzzer-dependencies: $(PYTHON)
 	cd projects/openvm-fuzzer && $(PYTHON) -m pip install -r requirements.txt
 	cd projects/pico-fuzzer && $(PYTHON) -m pip install -r requirements.txt
 	cd projects/ziren-fuzzer && $(PYTHON) -m pip install -r requirements.txt
+	cd projects/sphinx-fuzzer && $(PYTHON) -m pip install -r requirements.txt
 
 install-plotting-helpers: $(PYTHON)
 	cd scripts && $(PYTHON) -m pip install -r requirements.txt
@@ -112,6 +113,7 @@ tmux-all-explore:
 	$(MAKE) .tmux-all-explore-template ZKVM_TARGET=pico
 	$(MAKE) .tmux-all-explore-template ZKVM_TARGET=risc0
 	$(MAKE) .tmux-all-explore-template ZKVM_TARGET=sp1
+	$(MAKE) .tmux-all-explore-template ZKVM_TARGET=sphinx
 	$(MAKE) .tmux-all-explore-template ZKVM_TARGET=ziren
 
 # ---------------------------------- Refind ---------------------------------- #
@@ -432,4 +434,20 @@ ziren-explore-no-schedular:
 
 ziren-explore-no-modification:
 	$(MAKE) .zkvm-explore-no-modification ZKVM_TARGET=ziren
+
+# ---------------------------------------------------------------------------- #
+#                                Sphinx Control                                #
+# ---------------------------------------------------------------------------- #
+
+sphinx-explore-default:
+	$(MAKE) .zkvm-explore-default ZKVM_TARGET=sphinx
+
+sphinx-explore-no-inline:
+	$(MAKE) .zkvm-explore-no-inline ZKVM_TARGET=sphinx
+
+sphinx-explore-no-schedular:
+	$(MAKE) .zkvm-explore-no-schedular ZKVM_TARGET=sphinx
+
+sphinx-explore-no-modification:
+	$(MAKE) .zkvm-explore-no-modification ZKVM_TARGET=sphinx
 
