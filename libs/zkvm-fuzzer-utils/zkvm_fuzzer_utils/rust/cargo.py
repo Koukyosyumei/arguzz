@@ -1,10 +1,15 @@
+import os
 from pathlib import Path
 
 from zkvm_fuzzer_utils.cmd import ExecStatus, invoke_command
 from zkvm_fuzzer_utils.file import path_to_binary
 
 CARGO = path_to_binary("cargo")
-# RUSTUP = path_to_binary("rustup")
+RUSTUP = path_to_binary("rustup")
+# `+toolchain` directives are only handled by the rustup cargo proxy, not by a
+# direct cargo binary. Resolve the proxy that lives next to the rustup binary
+# so toolchain-pinned commands work even if a non-rustup cargo comes first on PATH.
+RUSTUP_CARGO = str(Path(RUSTUP).parent / "cargo") if RUSTUP else CARGO
 
 
 # ---------------------------------------------------------------------------- #
@@ -110,9 +115,10 @@ class CargoCmd:
         return self
 
     def get_command(self) -> list[str]:
-        command = [self.__cargo]
         if self.__toolchain:
-            command.append(f"+{self.__toolchain}")
+            command = [RUSTUP_CARGO, f"+{self.__toolchain}"]
+        else:
+            command = [self.__cargo]
         if self.__sub_cli:
             command.append(self.__sub_cli)
         command.append(self.__action)
@@ -131,9 +137,21 @@ class CargoCmd:
         return command
 
     def execute(self) -> ExecStatus:
+        env = self.__environment
+        # When a toolchain is requested, ensure the rustup proxy directory is
+        # first on PATH for the subprocess. cargo subcommands (e.g. cargo-pico)
+        # spawn nested `cargo +<toolchain> ...` calls via PATH lookup, and a
+        # non-rustup cargo cannot resolve the `+toolchain` directive.
+        if self.__toolchain and RUSTUP:
+            rustup_dir = str(Path(RUSTUP).parent)
+            existing_path = (env or {}).get("PATH") or os.environ.get("PATH", "")
+            path_entries = existing_path.split(os.pathsep) if existing_path else []
+            if not path_entries or path_entries[0] != rustup_dir:
+                env = dict(env) if env else {}
+                env["PATH"] = f"{rustup_dir}{os.pathsep}{existing_path}"
         return invoke_command(
             self.get_command(),
-            env=self.__environment,
+            env=env,
             cwd=self.__cwd,
             timeout=self.__timeout,
             explicit_clean_zombies=self.__explicit_clean_zombies,
