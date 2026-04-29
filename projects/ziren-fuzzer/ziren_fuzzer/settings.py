@@ -5,7 +5,8 @@ from ziren_fuzzer.kinds import InjectionKind, InstrKind
 #
 
 ZIREN_AVAILABLE_COMMITS_OR_BRANCHES = [
-    "latticevm"
+    "1054a6fd9e4e982772533789b3bdad8240514815",
+    "latticevm",
 ]
 ZIREN_ZKVM_GIT_REPOSITORY = "https://github.com/ProjectZKM/Ziren"
 RUST_TOOLCHAIN_VERSION = "nightly-2025-10-30"

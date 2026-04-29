@@ -42,8 +42,12 @@ logger = logging.getLogger("fuzzer")
 
 
 def create_circuit_config(no_inline_assembly: bool) -> CircuitGenerationConfig:
-    if no_inline_assembly:
-        FUZZER_CONFIG.custom_functions = []  # remove custom functions
+    # Ziren's guest target is `mipsel-zkm-zkvm-elf` (MIPS32r2). The shared
+    # FUZZER_CONFIG defaults to RISCV_IM_EXTENSION custom functions, which emit
+    # `mulh`, `xori`, signed-immediate `andi`, etc. — none of which assemble on
+    # MIPS. Until a MIPS instruction module exists, always drop the templates.
+    FUZZER_CONFIG.custom_functions = []
+    _ = no_inline_assembly  # kept for CLI parity; effectively forced True here
 
     return CircuitGenerationConfig(
         MIN_VALUE_U32,
